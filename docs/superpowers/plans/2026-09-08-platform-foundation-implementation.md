@@ -95,12 +95,11 @@ git commit -S -m "feat: add typed configuration and database boundary"
 - Create: `backend/app/db/models/ledger.py`
 - Create: `backend/app/db/models/mixins.py`
 - Create: `backend/app/db/schema.py`
-- Create: `backend/tests/conftest.py`
 - Create: `backend/tests/test_models.py`
 - Create: `backend/alembic.ini`
 - Create: `backend/migrations/env.py`
 - Create: `backend/migrations/script.py.mako`
-- Create: `backend/migrations/versions/0001_platform_and_ledger.py`
+- Create: `backend/migrations/versions/f27b9d5a4dc3_create_platform_and_ledger_schema.py`
 
 **Interfaces:**
 - `Tenant`, `Organization`, `User`, `Role`, `UserRole`, `SessionToken`, `AuditEvent`, `IdempotencyRecord`.
@@ -109,7 +108,7 @@ git commit -S -m "feat: add typed configuration and database boundary"
 - `TenantScope.tenant_id`, `TenantScope.organization_id`.
 - `Base.metadata` contains every model for Alembic autogeneration.
 
-- [ ] **Step 1: Write failing persistence tests**
+- [x] **Step 1: Write failing persistence tests**
 
 ```python
 def test_platform_records_require_tenant_scope(db_session):
@@ -133,23 +132,23 @@ def test_metadata_contains_required_tables(db_engine):
     assert {"tenants", "journal_entries", "audit_events"} <= names
 ```
 
-- [ ] **Step 2: Run tests and verify they fail for absent models/schema**
+- [x] **Step 2: Run tests and verify they fail for absent models/schema**
 
 Run: `cd backend && pytest -q tests/test_models.py`
 
 Expected: FAIL because model modules, metadata, and migration do not exist.
 
-- [ ] **Step 3: Implement models and first migration**
+- [x] **Step 3: Implement models and first migration**
 
 Use UUID primary keys, UTC timestamps, tenant/org foreign keys, unique tenant slug, unique organization slug within tenant, normalized user email within tenant, durable session token hashes, append-only audit rows, unique `(tenant_id, key)` idempotency records, unique account code within organization, fiscal-period lock state, and journal source/idempotency lineage. Add database checks for non-negative debit/credit and one-sided journal lines.
 
-- [ ] **Step 4: Run migration and persistence tests**
+- [x] **Step 4: Run migration and persistence tests**
 
 Run: `cd backend && alembic upgrade head && pytest -q tests/test_models.py`
 
 Expected: PASS with 3 tests and 0 failures against a clean SQLite test database and the configured migration target.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/db/models backend/app/db/schema.py backend/alembic.ini backend/migrations backend/tests/test_models.py
@@ -163,6 +162,7 @@ git commit -S -m "feat: add tenant identity and ledger persistence schema"
 - Create: `backend/app/core/auth.py`
 - Create: `backend/app/api/dependencies.py`
 - Create: `backend/app/api/auth.py`
+- Create: `backend/tests/conftest.py`
 - Create: `backend/tests/test_security.py`
 - Create: `backend/tests/test_auth_api.py`
 - Modify: `backend/app/main.py`
@@ -215,7 +215,7 @@ Run: `cd backend && pytest -q tests/test_security.py tests/test_auth_api.py test
 
 Expected: PASS with all focused tests and the existing ledger tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/core/security.py backend/app/core/auth.py backend/app/api backend/app/main.py backend/tests/test_security.py backend/tests/test_auth_api.py
