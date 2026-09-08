@@ -21,6 +21,48 @@ const report = {
   total_credit: '1070.00',
 };
 
+const profitLoss = {
+  from_date: '2026-01-01',
+  to_date: '2026-12-31',
+  rows: [
+    { account_code: '4000', account_name: 'Revenue', amount: '1070.00' },
+    { account_code: '5100', account_name: 'Operating expense', amount: '370.00' },
+  ],
+  total_revenue: '1070.00',
+  total_expenses: '370.00',
+  net_income: '700.00',
+};
+
+const balanceSheet = {
+  as_of: '2026-12-31',
+  assets: [{ account_code: '1001', account_name: 'Operating bank', amount: '1070.00' }],
+  liabilities: [{ account_code: '2100', account_name: 'Accounts payable', amount: '370.00' }],
+  equity: [],
+  total_assets: '1070.00',
+  total_liabilities: '370.00',
+  total_equity: '700.00',
+  net_income: '700.00',
+  total_liabilities_and_equity: '1070.00',
+};
+
+const generalLedger = {
+  from_date: '2026-01-01',
+  to_date: '2026-12-31',
+  rows: [{ entry_id: 'entry-1', reference: 'REPORT-001', journal_date: '2026-09-08', account_code: '1001', memo: 'Customer receipt', source_type: 'manual', debit: '1070.00', credit: '0.00' }],
+  total_debit: '1070.00',
+  total_credit: '1070.00',
+};
+
+const aged = {
+  as_of: '2026-12-31',
+  document_type: 'sales_invoice',
+  rows: [{ document_id: 'document-1', document_number: 'INV-001', partner_id: 'partner-1', issue_date: '2026-11-01', due_date: '2026-11-30', total: '1070.00', allocated: '0.00', outstanding: '1070.00', bucket: '1_30' }],
+  bucket_totals: { current: '0.00', '1_30': '1070.00', '31_60': '0.00', '61_90': '0.00', over_90: '0.00' },
+  current_total: '0.00',
+  overdue_total: '1070.00',
+  total_outstanding: '1070.00',
+};
+
 async function configureConnectedWorkspace(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem('zsme-api-base-url', 'http://api.test');
@@ -67,11 +109,48 @@ test('trial balance date controls reload the server report contract', async ({ p
   expect(requestedUrls.at(-1)).toContain('to_date=2026-06-30');
 });
 
-test('unsupported report pages stay explicit about the backend contract', async ({ page }) => {
+test('profit and loss loads its dedicated server-derived contract', async ({ page }) => {
   await configureConnectedWorkspace(page);
-  await page.goto('/reports/profit-loss');
+  let requestedUrl = '';
+  await page.route('**/v1/reports/profit-loss**', async (route) => {
+    requestedUrl = route.request().url();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(profitLoss) });
+  });
 
+  await page.goto('/reports/profit-loss');
   await expect(page.getByRole('heading', { name: 'Profit & loss', exact: true })).toBeVisible();
-  await expect(page.getByText('Report contract pending', { exact: true }).last()).toBeVisible();
-  await expect(page.getByText('No unsupported financial values are fabricated.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Revenue', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('THB 700.00', { exact: true }).first()).toBeVisible();
+  expect(requestedUrl).toContain('from_date=2026-01-01');
+  expect(requestedUrl).toContain('to_date=2026-12-31');
+});
+
+test('balance sheet, general ledger and ageing pages use dedicated contracts', async ({ page }) => {
+  await configureConnectedWorkspace(page);
+  const requestedUrls: string[] = [];
+  await page.route('**/v1/reports/**', async (route) => {
+    const url = new URL(route.request().url());
+    requestedUrls.push(url.toString());
+    const body = url.pathname.endsWith('/balance-sheet')
+      ? balanceSheet
+      : url.pathname.endsWith('/general-ledger')
+        ? generalLedger
+        : { ...aged, document_type: url.pathname.endsWith('/aged-payable') ? 'vendor_bill' : 'sales_invoice' };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+
+  await page.goto('/reports/balance-sheet');
+  await expect(page.getByText('Operating bank', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('As-of date')).toBeVisible();
+  await page.getByLabel('As-of date').fill('2026-11-30');
+  await page.getByRole('button', { name: 'Run report' }).click();
+  await expect.poll(() => requestedUrls.at(-1) || '').toContain('as_of=2026-11-30');
+
+  await page.goto('/reports/general-ledger');
+  await expect(page.getByText('REPORT-001', { exact: true })).toBeVisible();
+
+  await page.goto('/reports/aged-receivable');
+  await expect(page.getByText('INV-001', { exact: true })).toBeVisible();
+  await page.goto('/reports/aged-payable');
+  await expect(page.getByText('1–30 days', { exact: true })).toBeVisible();
 });
