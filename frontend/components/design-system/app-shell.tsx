@@ -25,7 +25,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useSyncExternalStore, useState } from "react";
 
 import { ApiError, clearAccessToken, getAccessToken, getApiBaseUrl } from "@/lib/api-client";
@@ -84,6 +84,7 @@ function isActivePath(pathname: string, href: string) {
 
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
+  const router = useRouter();
   const theme = useSyncExternalStore(subscribeToTheme, readTheme, getServerTheme);
   const isHydrated = useSyncExternalStore(subscribeToHydration, getClientHydration, getServerHydration);
   const [isNavOpen, setIsNavOpen] = useState(false);
@@ -107,13 +108,14 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
           clearAccessToken();
           if (isMounted) {
             setCurrentUser(null);
+            router.replace("/login");
           }
         }
       });
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -150,6 +152,8 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
     } finally {
       setCurrentUser(null);
       setIsSigningOut(false);
+      router.replace("/login");
+      router.refresh();
     }
   };
 
