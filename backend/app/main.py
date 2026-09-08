@@ -9,6 +9,7 @@ from app.domains.accounting.api import router as accounting_master_router
 from app.domains.documents.api import router as documents_router
 from app.domains.ledger.api import router as ledger_router
 from app.domains.partners.api import router as partners_router
+from app.domains.payments.api import router as payments_router
 from app.domains.reports.api import router as reports_router
 
 app = FastAPI(
@@ -26,6 +27,7 @@ app.include_router(partners_router)
 app.include_router(documents_router)
 app.include_router(accounting_master_router)
 app.include_router(reports_router)
+app.include_router(payments_router)
 
 
 @app.get("/health")

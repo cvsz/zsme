@@ -9,7 +9,9 @@ import {
   FileText,
   ReceiptText,
   BarChart3,
+  CircleDollarSign,
   ScrollText,
+  WalletCards,
   LayoutDashboard,
   Menu,
   Moon,
@@ -64,6 +66,8 @@ const navigation = [
   { href: "/invoices", label: "Invoices", icon: ReceiptText },
   { href: "/bills", label: "Vendor bills", icon: ScrollText },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/receipts", label: "Receipts", icon: WalletCards },
+  { href: "/disbursements", label: "Disbursements", icon: CircleDollarSign },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 

@@ -51,6 +51,7 @@ def test_chart_account_create_replay_and_scoped_list(
     assert replay.json()["id"] == first.json()["id"]
     assert listed.status_code == 200
     assert [item["code"] for item in listed.json()] == [
+        "1001",
         "1100",
         "1200",
         "1400",

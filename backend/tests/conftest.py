@@ -116,6 +116,13 @@ def ledger_ready(db_session: Session, seeded_user: User) -> FiscalPeriod:
         ChartAccount(
             tenant_id=seeded_user.tenant_id,
             organization_id=seeded_user.organization_id,
+            code="1001",
+            name="Operating bank",
+            account_type="asset",
+        ),
+        ChartAccount(
+            tenant_id=seeded_user.tenant_id,
+            organization_id=seeded_user.organization_id,
             code="1100",
             name="Accounts receivable",
             account_type="asset",

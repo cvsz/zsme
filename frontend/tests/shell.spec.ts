@@ -48,6 +48,8 @@ test('core workspace routes render their own page headings', async ({ page }) =>
     '/reports/general-ledger',
     '/reports/aged-receivable',
     '/reports/aged-payable',
+    '/receipts',
+    '/disbursements',
     '/settings',
   ]) {
     await page.goto(route);
