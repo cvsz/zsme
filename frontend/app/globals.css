@@ -697,6 +697,31 @@ h4 {
   padding: var(--space-md);
 }
 
+.loading-panel {
+  display: flex;
+  min-height: 8rem;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  color: var(--color-foreground-muted);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
 .panel-grid {
   display: grid;
   gap: var(--space-md);

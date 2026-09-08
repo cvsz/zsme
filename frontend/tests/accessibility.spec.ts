@@ -10,7 +10,10 @@ test('dashboard has no automated accessibility violations', async ({ page }) => 
 });
 
 test('core workspace pages remain accessible across desktop and mobile routes', async ({ page }) => {
-  test.setTimeout(240_000);
+  // This matrix intentionally scans every core route at five widths. Under the
+  // shared Next development server it can run slower while the rest of the
+  // browser suite is compiling and exercising routes concurrently.
+  test.setTimeout(360_000);
   for (const viewport of [375, 414, 768, 1024, 1440]) {
     await page.setViewportSize({ width: viewport, height: 900 });
     for (const route of ['/dashboard', '/partners', '/accounting', '/sales', '/invoices', '/bills', '/banking', '/tax', '/audit', '/settings']) {

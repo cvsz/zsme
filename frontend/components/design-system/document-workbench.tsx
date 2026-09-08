@@ -559,3 +559,23 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
     </div>
   );
 }
+
+export function DocumentWorkbenchFallback({ kind }: Readonly<{ kind: DocumentKind }>) {
+  const page = copy[kind];
+
+  return (
+    <div className="page-stack" aria-busy="true">
+      <header className="page-header">
+        <div className="page-header-copy">
+          <p className="eyebrow">{page.eyebrow}</p>
+          <h1 className="page-title">{page.title}</h1>
+          <p className="page-subtitle">Loading the governed {page.singular} workspace…</p>
+        </div>
+      </header>
+      <section className="panel loading-panel" aria-label={`Loading ${page.plural}`}>
+        <RefreshCw className="spin" size={18} aria-hidden="true" />
+        <span>Preparing live document controls</span>
+      </section>
+    </div>
+  );
+}
