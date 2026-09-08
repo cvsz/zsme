@@ -474,7 +474,7 @@ Run: `cd backend && ruff check . && pytest -q`; `docker compose config`; `docker
 
 Expected: all commands exit 0, or a documented environment-only skip identifies the missing external tool without claiming the gate passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .github/workflows/ci.yml docker-compose.yml backend/Dockerfile backend/.env.example infra/compose docs/runbooks
