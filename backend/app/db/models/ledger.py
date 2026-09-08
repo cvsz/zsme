@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    event,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -105,6 +106,19 @@ class JournalLineRecord(IdentifiedTimestampMixin, OrganizationScopeMixin, Base):
     memo: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     entry: Mapped[JournalEntryRecord] = relationship(back_populates="lines")
+
+
+@event.listens_for(JournalEntryRecord, "before_update")
+@event.listens_for(JournalEntryRecord, "before_delete")
+def prevent_posted_entry_mutation(_mapper, _connection, target: JournalEntryRecord) -> None:
+    if target.status == "posted":
+        raise ValueError("posted journal entries are immutable")
+
+
+@event.listens_for(JournalLineRecord, "before_update")
+@event.listens_for(JournalLineRecord, "before_delete")
+def prevent_posted_line_mutation(_mapper, _connection, target: JournalLineRecord) -> None:
+    raise ValueError("posted journal entries are immutable")
 
 
 __all__ = ["ChartAccount", "FiscalPeriod", "JournalEntryRecord", "JournalLineRecord"]

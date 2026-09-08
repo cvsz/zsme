@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +10,15 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.security import hash_password
 from app.db.base import Base
-from app.db.models import Organization, Role, Tenant, User, UserRole
+from app.db.models import (
+    ChartAccount,
+    FiscalPeriod,
+    Organization,
+    Role,
+    Tenant,
+    User,
+    UserRole,
+)
 from app.db.session import get_session
 
 
@@ -86,3 +95,41 @@ def other_tenant_user(db_session: Session) -> User:
     db_session.add_all([tenant, organization, user])
     db_session.commit()
     return user
+
+
+@pytest.fixture
+def ledger_ready(db_session: Session, seeded_user: User) -> FiscalPeriod:
+    accounts = [
+        ChartAccount(
+            tenant_id=seeded_user.tenant_id,
+            organization_id=seeded_user.organization_id,
+            code="1100",
+            name="Accounts receivable",
+            account_type="asset",
+        ),
+        ChartAccount(
+            tenant_id=seeded_user.tenant_id,
+            organization_id=seeded_user.organization_id,
+            code="4000",
+            name="Revenue",
+            account_type="revenue",
+        ),
+        ChartAccount(
+            tenant_id=seeded_user.tenant_id,
+            organization_id=seeded_user.organization_id,
+            code="2101",
+            name="Output VAT",
+            account_type="liability",
+        ),
+    ]
+    period = FiscalPeriod(
+        tenant_id=seeded_user.tenant_id,
+        organization_id=seeded_user.organization_id,
+        name="2026",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+        status="open",
+    )
+    db_session.add_all([*accounts, period])
+    db_session.commit()
+    return period

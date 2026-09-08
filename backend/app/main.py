@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
 from app.domain.ledger import JournalEntry, JournalLine
+from app.domains.ledger.api import router as ledger_router
 
 app = FastAPI(
     title="ZSME Accounting API",
@@ -10,6 +11,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
+app.include_router(ledger_router)
 
 
 @app.get("/health")

@@ -242,7 +242,7 @@ git commit -S -m "feat: add tenant-scoped session authentication"
 - `POST /v1/accounting/journal-entries` requires `Idempotency-Key` and returns 201 for a new posting or 200 for a replay.
 - `POST /v1/accounting/journal-entries/{entry_id}/reverse` creates a linked reversal and never edits the original.
 
-- [ ] **Step 1: Write failing behavior tests**
+- [x] **Step 1: Write failing behavior tests**
 
 ```python
 def test_posting_is_atomic_and_audited(db_session, principal, balanced_command):
@@ -273,17 +273,17 @@ def test_reversal_balances_and_preserves_original(db_session, principal, balance
     assert original_still_exists_and_is_unchanged(db_session, original.entry_id)
 ```
 
-- [ ] **Step 2: Run tests and verify they fail for absent service**
+- [x] **Step 2: Run tests and verify they fail for absent service**
 
 Run: `cd backend && pytest -q tests/test_ledger_persistence.py tests/test_ledger_api.py`
 
 Expected: FAIL because persistent posting service and routes do not exist.
 
-- [ ] **Step 3: Implement transactional posting**
+- [x] **Step 3: Implement transactional posting**
 
 Validate the existing Pydantic ledger invariants, resolve accounts and period under the principal organization, lock the idempotency row during replay, insert the immutable entry and lines, create the audit event, and commit once. Reject posted-entry update/delete routes. Use an explicit domain error mapper that returns stable problem responses and a correlation ID.
 
-- [ ] **Step 4: Run focused, API, and regression tests**
+- [x] **Step 4: Run focused, API, and regression tests**
 
 Run: `cd backend && pytest -q tests/test_ledger_persistence.py tests/test_ledger_api.py tests/test_ledger.py`
 
@@ -352,7 +352,7 @@ Run: `cd backend && ruff check . && pytest -q`
 
 Expected: PASS with zero lint errors and zero test failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/api backend/app/observability backend/app/main.py backend/.env.example backend/tests/test_platform_api.py
