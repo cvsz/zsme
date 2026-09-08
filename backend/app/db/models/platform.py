@@ -4,7 +4,18 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Numeric, String, UniqueConstraint, Uuid
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    UniqueConstraint,
+    Uuid,
+    event,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -97,6 +108,10 @@ class SessionToken(IdentifiedTimestampMixin, TenantScopeMixin, Base):
 
 class AuditEvent(IdentifiedTimestampMixin, TenantScopeMixin, Base):
     __tablename__ = "audit_events"
+    __table_args__ = (
+        Index("ix_audit_events_org_created", "organization_id", "created_at"),
+        Index("ix_audit_events_org_action_created", "organization_id", "action", "created_at"),
+    )
 
     organization_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), nullable=True, index=True
@@ -111,6 +126,12 @@ class AuditEvent(IdentifiedTimestampMixin, TenantScopeMixin, Base):
     payload: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
 
     actor: Mapped[User | None] = relationship(back_populates="audit_events")
+
+
+@event.listens_for(AuditEvent, "before_update")
+@event.listens_for(AuditEvent, "before_delete")
+def prevent_audit_event_mutation(_mapper, _connection, _target: AuditEvent) -> None:
+    raise ValueError("audit events are append-only")
 
 
 class IdempotencyRecord(IdentifiedTimestampMixin, TenantScopeMixin, Base):

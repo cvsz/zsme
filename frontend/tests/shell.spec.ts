@@ -51,6 +51,7 @@ test('core workspace routes render their own page headings', async ({ page }) =>
     '/receipts',
     '/disbursements',
     '/banking',
+    '/audit',
     '/settings',
   ]) {
     await page.goto(route);

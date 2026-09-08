@@ -994,6 +994,50 @@ h4 {
   min-height: 11rem;
 }
 
+.audit-policy-list {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.audit-policy {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+}
+
+.audit-policy-icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.audit-policy > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.audit-policy strong {
+  color: var(--color-foreground);
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
+}
+
+.audit-policy small {
+  color: var(--color-foreground-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .feature-list {
   display: grid;
   gap: var(--space-sm);

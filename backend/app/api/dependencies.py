@@ -23,6 +23,7 @@ TaxReadDep = Annotated[Principal, Depends(require_permission("tax:read"))]
 TaxWriteDep = Annotated[Principal, Depends(require_permission("tax:write"))]
 BankingReadDep = Annotated[Principal, Depends(require_permission("banking:read"))]
 BankingWriteDep = Annotated[Principal, Depends(require_permission("banking:write"))]
+AuditReadDep = Annotated[Principal, Depends(require_permission("audit:read"))]
 
 __all__ = [
     "OrganizationReadDep",
@@ -36,6 +37,7 @@ __all__ = [
     "TaxWriteDep",
     "BankingReadDep",
     "BankingWriteDep",
+    "AuditReadDep",
     "ArReadDep",
     "ArWriteDep",
     "PartnerReadDep",

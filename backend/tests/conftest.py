@@ -88,6 +88,7 @@ def seeded_user(db_session: Session) -> User:
             "tax:write",
             "banking:read",
             "banking:write",
+            "audit:read",
         ],
         is_system=True,
     )

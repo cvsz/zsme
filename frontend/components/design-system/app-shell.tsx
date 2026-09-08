@@ -11,6 +11,7 @@ import {
   BarChart3,
   CircleDollarSign,
   Landmark,
+  History,
   ScrollText,
   WalletCards,
   LayoutDashboard,
@@ -70,6 +71,7 @@ const navigation = [
   { href: "/receipts", label: "Receipts", icon: WalletCards },
   { href: "/disbursements", label: "Disbursements", icon: CircleDollarSign },
   { href: "/banking", label: "Banking", icon: Landmark },
+  { href: "/audit", label: "Audit", icon: History },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
