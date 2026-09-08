@@ -770,6 +770,13 @@ h4 {
   color: var(--color-foreground-subtle);
 }
 
+.data-table .table-secondary {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--color-foreground-subtle);
+  font-size: 0.76rem;
+}
+
 .workbench-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -795,6 +802,18 @@ h4 {
 
 .workbench-search input::placeholder {
   color: var(--color-foreground-subtle);
+}
+
+.filter-select {
+  min-height: 2.75rem;
+  padding: 0.625rem 2rem 0.625rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .workbench-empty {
