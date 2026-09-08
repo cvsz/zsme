@@ -20,6 +20,12 @@ Thumbs.db
 node_modules/
 .next/
 out/
+frontend/playwright-report/
+frontend/test-results/
+*.tsbuildinfo
+
+# Python packaging metadata
+*.egg-info/
 
 # Coverage / build
 .coverage
