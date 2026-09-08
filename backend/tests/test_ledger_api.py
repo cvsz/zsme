@@ -56,3 +56,40 @@ def test_posting_replay_returns_same_resource_without_duplication(
     assert second.json()["status"] == "already_posted"
     assert second.json()["entry_id"] == first.json()["entry_id"]
 
+
+def test_journal_list_returns_organization_scoped_lines_and_totals(
+    client: TestClient, seeded_user, ledger_ready
+) -> None:
+    headers = {
+        "Authorization": f"Bearer {_login(client, seeded_user)}",
+        "Idempotency-Key": "api-list-001",
+    }
+    posted = client.post("/v1/accounting/journal-entries", headers=headers, json=_journal_body())
+    assert posted.status_code == 201
+
+    response = client.get(
+        "/v1/accounting/journal-entries?reference=AR-202609&from_date=2026-09-01&to_date=2026-09-30",
+        headers={"Authorization": headers["Authorization"]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["next_offset"] is None
+    assert body["items"][0]["reference"] == "AR-202609-0002"
+    assert body["items"][0]["organization_id"] == str(seeded_user.organization_id)
+    assert body["items"][0]["total_debit"] == "1070.00"
+    assert body["items"][0]["total_credit"] == "1070.00"
+    assert len(body["items"][0]["lines"]) == 3
+
+
+def test_journal_list_rejects_an_invalid_date_range(
+    client: TestClient, seeded_user, ledger_ready
+) -> None:
+    response = client.get(
+        "/v1/accounting/journal-entries?from_date=2026-10-01&to_date=2026-09-01",
+        headers={"Authorization": f"Bearer {_login(client, seeded_user)}"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "from_date must be on or before to_date"

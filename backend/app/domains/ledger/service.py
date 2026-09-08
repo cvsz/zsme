@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from hashlib import sha256
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
@@ -18,11 +18,100 @@ from app.db.models import (
     JournalEntryRecord,
     JournalLineRecord,
 )
-from app.domains.ledger.schemas import JournalPostCommand, JournalPostResult
+from app.domains.ledger.schemas import (
+    JournalEntryPage,
+    JournalEntryRead,
+    JournalLineRead,
+    JournalPostCommand,
+    JournalPostResult,
+)
 
 
 class DomainError(Exception):
     """A safe, expected domain failure that can be returned to an API client."""
+
+
+def _entry_read(entry: JournalEntryRecord) -> JournalEntryRead:
+    return JournalEntryRead(
+        id=entry.id,
+        tenant_id=entry.tenant_id,
+        organization_id=entry.organization_id,
+        fiscal_period_id=entry.fiscal_period_id,
+        reference=entry.reference,
+        journal_date=entry.journal_date,
+        memo=entry.memo,
+        status="posted",
+        source_type=entry.source_type,
+        source_id=entry.source_id,
+        reversal_of_id=entry.reversal_of_id,
+        posted_at=entry.posted_at,
+        created_at=entry.created_at,
+        lines=[
+            JournalLineRead(
+                id=line.id,
+                line_no=line.line_no,
+                account_code=line.account_code,
+                debit=line.debit,
+                credit=line.credit,
+                memo=line.memo,
+            )
+            for line in entry.lines
+        ],
+        total_debit=sum((line.debit for line in entry.lines), start=Decimal("0.00")),
+        total_credit=sum((line.credit for line in entry.lines), start=Decimal("0.00")),
+    )
+
+
+def list_journal_entries(
+    db: Session,
+    principal: Principal,
+    *,
+    reference: str | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> JournalEntryPage:
+    if principal.organization_id is None:
+        raise DomainError("an organization is required for ledger operations")
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise DomainError("from_date must be on or before to_date")
+
+    filters = [
+        JournalEntryRecord.tenant_id == principal.tenant_id,
+        JournalEntryRecord.organization_id == principal.organization_id,
+        JournalEntryRecord.status == "posted",
+    ]
+    if reference and reference.strip():
+        filters.append(JournalEntryRecord.reference.ilike(f"%{reference.strip()}%"))
+    if from_date is not None:
+        filters.append(JournalEntryRecord.journal_date >= from_date)
+    if to_date is not None:
+        filters.append(JournalEntryRecord.journal_date <= to_date)
+
+    total = db.scalar(select(func.count(JournalEntryRecord.id)).where(*filters)) or 0
+    entries = list(
+        db.scalars(
+            select(JournalEntryRecord)
+            .where(*filters)
+            .order_by(
+                JournalEntryRecord.journal_date.desc(),
+                JournalEntryRecord.created_at.desc(),
+                JournalEntryRecord.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        ).all()
+    )
+    items = [_entry_read(entry) for entry in entries]
+    next_offset = offset + len(items) if offset + len(items) < total else None
+    return JournalEntryPage(
+        items=items,
+        limit=limit,
+        offset=offset,
+        total=total,
+        next_offset=next_offset,
+    )
 
 
 def _request_hash(command: JournalPostCommand) -> str:
@@ -228,4 +317,4 @@ def reverse_journal_entry(
     return post_journal_entry(db, command, principal, idempotency_key)
 
 
-__all__ = ["DomainError", "post_journal_entry", "reverse_journal_entry"]
+__all__ = ["DomainError", "list_journal_entries", "post_journal_entry", "reverse_journal_entry"]

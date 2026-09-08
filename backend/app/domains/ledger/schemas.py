@@ -1,9 +1,9 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.ledger import JournalEntry, JournalLine
 
@@ -59,4 +59,51 @@ class JournalPostResult(BaseModel):
     audit_event_id: UUID
 
 
-__all__ = ["JournalLineInput", "JournalPostCommand", "JournalPostResult"]
+class JournalLineRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    line_no: int
+    account_code: str
+    debit: Decimal
+    credit: Decimal
+    memo: str | None
+
+
+class JournalEntryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    organization_id: UUID
+    fiscal_period_id: UUID | None
+    reference: str
+    journal_date: date
+    memo: str | None
+    status: Literal["posted"]
+    source_type: str | None
+    source_id: UUID | None
+    reversal_of_id: UUID | None
+    posted_at: datetime | None
+    created_at: datetime
+    lines: list[JournalLineRead]
+    total_debit: Decimal
+    total_credit: Decimal
+
+
+class JournalEntryPage(BaseModel):
+    items: list[JournalEntryRead] = Field(default_factory=list)
+    limit: int
+    offset: int
+    total: int
+    next_offset: int | None
+
+
+__all__ = [
+    "JournalEntryPage",
+    "JournalEntryRead",
+    "JournalLineInput",
+    "JournalLineRead",
+    "JournalPostCommand",
+    "JournalPostResult",
+]
