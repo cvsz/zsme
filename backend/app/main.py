@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.auth import router as auth_router
 from app.domain.ledger import JournalEntry, JournalLine
 
 app = FastAPI(
@@ -7,6 +8,8 @@ app = FastAPI(
     version="0.1.0",
     description="Thailand-first SME accounting API with double-entry accounting invariants.",
 )
+
+app.include_router(auth_router)
 
 
 @app.get("/health")

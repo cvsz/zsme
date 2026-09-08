@@ -177,7 +177,7 @@ git commit -S -m "feat: add tenant identity and ledger persistence schema"
 - `POST /v1/auth/logout` revokes the current session.
 - `GET /v1/auth/me` returns the tenant, organization, user, roles, and permissions without password or token hashes.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_password_hash_is_not_plaintext():
@@ -199,17 +199,17 @@ def test_me_never_crosses_tenant_boundary(client, seeded_user, other_tenant_user
     assert str(other_tenant_user.tenant_id) not in response.text
 ```
 
-- [ ] **Step 2: Run the tests and verify the expected missing-auth failure**
+- [x] **Step 2: Run the tests and verify the expected missing-auth failure**
 
 Run: `cd backend && pytest -q tests/test_security.py tests/test_auth_api.py`
 
 Expected: FAIL because authentication helpers and routes do not exist.
 
-- [ ] **Step 3: Implement the minimal secure session flow**
+- [x] **Step 3: Implement the minimal secure session flow**
 
 Use Argon2 password hashing, cryptographically random opaque bearer tokens stored only as SHA-256 hashes, expiration and revocation timestamps, constant-time verification, generic login failure messages, and tenant-derived principal context. Apply permission dependencies to protected routes and use a default `ADMIN` role only in test fixtures/bootstrap code, never as an implicit production bypass.
 
-- [ ] **Step 4: Run focused and full backend tests**
+- [x] **Step 4: Run focused and full backend tests**
 
 Run: `cd backend && pytest -q tests/test_security.py tests/test_auth_api.py tests/test_ledger.py`
 
@@ -289,7 +289,7 @@ Run: `cd backend && pytest -q tests/test_ledger_persistence.py tests/test_ledger
 
 Expected: PASS with all posting, reversal, lock, replay, audit, API, and legacy validation tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/domains/ledger backend/app/main.py backend/tests/test_ledger_persistence.py backend/tests/test_ledger_api.py

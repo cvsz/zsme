@@ -1,3 +1,12 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["tests*", "migrations*"]
+
 [project]
 name = "zsme-api"
 version = "0.1.0"
@@ -11,6 +20,7 @@ dependencies = [
   "sqlalchemy>=2.0,<3",
   "psycopg[binary]>=3.2,<4",
   "alembic>=1.14,<2",
+  "pwdlib[argon2]>=0.2,<1",
 ]
 
 [project.optional-dependencies]
