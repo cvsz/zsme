@@ -80,7 +80,7 @@ Run: `cd backend && pytest -q tests/test_config.py tests/test_db_session.py test
 
 Expected: PASS with 8 tests and 0 failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/pyproject.toml backend/app/core backend/app/db backend/tests/test_config.py backend/tests/test_db_session.py
@@ -386,7 +386,7 @@ git commit -S -m "feat: add scoped platform APIs and readiness checks"
 - `tokens.css` exposes semantic light/dark tokens from `MASTER.md`.
 - Authenticated pages use explicit `not_configured` or `empty` states until APIs supply data; they never display fabricated financial success.
 
-- [ ] **Step 1: Write failing browser tests**
+- [x] **Step 1: Write failing browser tests**
 
 ```typescript
 test('dashboard exposes keyboard navigable shell and tenant context', async ({ page }) => {
@@ -403,17 +403,17 @@ test('shell has no horizontal overflow at mobile width', async ({ page }) => {
 });
 ```
 
-- [ ] **Step 2: Run browser tests and verify the missing-frontend failure**
+- [x] **Step 2: Run browser tests and verify the missing-frontend failure**
 
 Run: `cd frontend && npm test -- --project=chromium`
 
 Expected: FAIL because the frontend package and routes do not exist.
 
-- [ ] **Step 3: Implement shell and design tokens**
+- [x] **Step 3: Implement shell and design tokens**
 
 Use self-hostable font loading with Lexend and Source Sans 3 plus Noto Sans Thai fallback, blue/amber semantic tokens, dark default authenticated theme, light and print alternate, Lucide SVG icons, visible focus styles, minimum 44px controls, mobile drawer navigation, desktop collapsible sidebar, route loading/error boundaries, and reduced-motion support.
 
-- [ ] **Step 4: Run browser, accessibility, and build checks**
+- [x] **Step 4: Run browser, accessibility, and build checks**
 
 Run: `cd frontend && npm test -- --project=chromium && npm run build`
 
@@ -443,7 +443,7 @@ git commit -S -m "feat: add enterprise responsive application shell"
 - Compose has explicit API liveness/readiness, database health, non-secret example configuration, and no pinned container IPs.
 - Runbooks describe exact local startup, migration, smoke, backup, restore, and rollback commands.
 
-- [ ] **Step 1: Write failing configuration checks**
+- [x] **Step 1: Write failing configuration checks**
 
 ```python
 def test_compose_uses_service_dns_and_health_dependencies():
@@ -458,17 +458,17 @@ def test_ci_contains_required_quality_jobs():
         assert required in workflow
 ```
 
-- [ ] **Step 2: Run the checks and verify missing hardening**
+- [x] **Step 2: Run the checks and verify missing hardening**
 
 Run: `python3 -m pytest -q backend/tests/test_ci_contract.py`
 
 Expected: FAIL because the contract tests and hardened CI workflow do not exist.
 
-- [ ] **Step 3: Implement non-secret CI/Compose/runbook hardening**
+- [x] **Step 3: Implement non-secret CI/Compose/runbook hardening**
 
 Add migration smoke, type/security tooling with explicit versions, frontend checks, container health probes, non-root runtime, pinned service DNS, and runbooks that distinguish local evidence from staging/production evidence. Add `PyYAML>=6.0,<7` to development dependencies for the Compose contract test.
 
-- [ ] **Step 4: Run the complete foundation gate**
+- [x] **Step 4: Run the complete foundation gate**
 
 Run: `cd backend && ruff check . && pytest -q`; `docker compose config`; `docker build -t zsme-api:foundation ./backend`; `cd frontend && npm run build`.
 

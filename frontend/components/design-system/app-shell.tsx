@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BarChart3,
   BookOpen,
   Building2,
   Check,
@@ -19,9 +18,39 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore, useState } from "react";
 
 type Theme = "dark" | "light";
+const THEME_EVENT = "zsme-theme-change";
+
+function subscribeToTheme(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(THEME_EVENT, onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(THEME_EVENT, onStoreChange);
+  };
+}
+
+function readTheme(): Theme {
+  return window.localStorage.getItem("zsme-theme") === "light" ? "light" : "dark";
+}
+
+function getServerTheme(): Theme {
+  return "dark";
+}
+
+function subscribeToHydration() {
+  return () => {};
+}
+
+function getClientHydration() {
+  return true;
+}
+
+function getServerHydration() {
+  return false;
+}
 
 const navigation = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -36,27 +65,14 @@ function isActivePath(pathname: string, href: string) {
 
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
-  const [theme, setTheme] = useState<Theme>("dark");
-  const [isHydrated, setIsHydrated] = useState(false);
+  const theme = useSyncExternalStore(subscribeToTheme, readTheme, getServerTheme);
+  const isHydrated = useSyncExternalStore(subscribeToHydration, getClientHydration, getServerHydration);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   useEffect(() => {
-    const storedTheme = window.localStorage.getItem("zsme-theme");
-    if (storedTheme === "light" || storedTheme === "dark") {
-      setTheme(storedTheme);
-    }
-    setIsHydrated(true);
-  }, []);
-
-  useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("zsme-theme", theme);
   }, [theme]);
-
-  useEffect(() => {
-    setIsNavOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     if (!isSearchOpen) {
@@ -73,7 +89,12 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSearchOpen]);
 
-  const toggleTheme = () => setTheme((current) => (current === "dark" ? "light" : "dark"));
+  const toggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    window.localStorage.setItem("zsme-theme", nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    window.dispatchEvent(new Event(THEME_EVENT));
+  };
 
   return (
     <div className="app-shell">
@@ -104,6 +125,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
               className="nav-link"
               href={href}
               aria-current={isActivePath(pathname, href) ? "page" : undefined}
+              onClick={() => setIsNavOpen(false)}
             >
               <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
               <span>{label}</span>

@@ -14,6 +14,20 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: zsme
+          POSTGRES_USER: zsme
+          POSTGRES_PASSWORD: zsme-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zsme -d zsme"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,18 +35,75 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/pyproject.toml
-      - name: Install
-        run: pip install -e ".[dev]"
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]" "pip-audit>=2.7,<3"
       - name: Lint
         run: ruff check .
+      - name: Compile import surface
+        run: python -m compileall -q app
+      - name: Migration smoke
+        env:
+          APP_ENV: ci
+          DATABASE_URL: postgresql+psycopg://zsme:zsme-ci-only@localhost:5432/zsme
+          SECRET_KEY: ci-only-secret-key-with-at-least-32-characters
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
       - name: Test
         run: pytest -q
+      - name: Dependency audit
+        run: pip-audit --strict
       - name: Import check
         run: python -c "from app.main import app; assert app.title == 'ZSME Accounting API'"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Install browser runtime
+        run: npx playwright install --with-deps chromium
+      - name: Browser and accessibility tests
+        run: npm test -- --project=chromium
+      - name: Production build
+        run: npm run build
 
   container:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build API image
-        run: docker build -t zsme-api:test ./backend
+        run: docker build --tag zsme-api:test ./backend
+      - name: Inspect image runtime contract
+        run: |
+          test "$(docker inspect --format='{{.Config.User}}' zsme-api:test)" = "zsme"
+          docker inspect --format='{{json .Config.Healthcheck}}' zsme-api:test | grep -q '/ready'
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare local non-secret configuration
+        run: cp backend/.env.compose.example backend/.env.compose
+      - name: Validate Compose configuration
+        run: docker compose --env-file backend/.env.compose config --quiet
+      - name: Validate patch formatting
+        run: git diff --check
