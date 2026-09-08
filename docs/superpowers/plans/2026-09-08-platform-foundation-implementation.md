@@ -41,7 +41,7 @@
 - `get_engine(database_url: str | None = None) -> Engine` creates a SQLAlchemy engine without connecting during import.
 - `get_session() -> Iterator[Session]` yields and closes a request session.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_settings_reads_environment(monkeypatch):
@@ -64,21 +64,21 @@ def test_production_settings_reject_short_secret(monkeypatch):
         Settings()
 ```
 
-- [ ] **Step 2: Run the focused tests and verify the expected missing-module failure**
+- [x] **Step 2: Run the focused tests and verify the expected missing-module failure**
 
 Run: `cd backend && pytest -q tests/test_config.py tests/test_db_session.py`
 
 Expected: FAIL because `app.core.config` and `app.db.session` do not exist yet.
 
-- [ ] **Step 3: Add dependencies and minimal implementation**
+- [x] **Step 3: Add dependencies and minimal implementation**
 
 Add `pydantic-settings`, `sqlalchemy`, `psycopg[binary]`, and `alembic` to runtime dependencies. Implement `Settings` with explicit environment aliases, a 32-character production secret requirement, and safe non-production defaults. Implement `DeclarativeBase`, `create_engine`, and a generator that rolls back on exceptions and always closes sessions.
 
-- [ ] **Step 4: Run focused and existing tests**
+- [x] **Step 4: Run focused and existing tests**
 
 Run: `cd backend && pytest -q tests/test_config.py tests/test_db_session.py tests/test_ledger.py`
 
-Expected: PASS with 7 tests and 0 failures.
+Expected: PASS with 8 tests and 0 failures.
 
 - [ ] **Step 5: Commit**
 
