@@ -50,7 +50,15 @@ function todayIso(): string {
 }
 
 function emptyLine(): DraftLine {
-  return { id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, account_code: "", debit: "0", credit: "0", memo: "" };
+  let id = globalThis.crypto?.randomUUID?.();
+  if (!id && globalThis.crypto?.getRandomValues) {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    id = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  if (!id) {
+    throw new Error("Secure randomness is unavailable");
+  }
+  return { id, account_code: "", debit: "0", credit: "0", memo: "" };
 }
 
 function formatDate(value: string): string {

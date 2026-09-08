@@ -9,7 +9,6 @@ import {
   CircleDollarSign,
   FileCheck2,
   FilePlus2,
-  Filter,
   Link2,
   LockKeyhole,
   ReceiptText,
@@ -167,6 +166,7 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
   const [isCreating, setIsCreating] = useState(false);
   const [postingId, setPostingId] = useState<string | null>(null);
   const [selectedPartnerId, setSelectedPartnerId] = useState("");
+  const [paymentSearch, setPaymentSearch] = useState("");
 
   const canUseWorkspace = Boolean(configuredEndpoint && getAccessToken());
   const viewState: LoadState | "loading" | "disconnected" | "unauthenticated" = !configuredEndpoint
@@ -176,8 +176,10 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
       : loadState === "idle"
         ? "loading"
         : loadState;
-  const visiblePayments = viewState === "disconnected" || viewState === "unauthenticated" ? [] : payments;
   const partnerNames = new Map(partners.map((partner) => [partner.id, partner.display_name]));
+  const connectedPayments = viewState === "disconnected" || viewState === "unauthenticated" ? [] : payments;
+  const normalizedPaymentSearch = paymentSearch.trim().toLowerCase();
+  const visiblePayments = connectedPayments.filter((payment) => !normalizedPaymentSearch || `${payment.payment_number} ${partnerNames.get(payment.partner_id) || ""} ${payment.memo || ""}`.toLowerCase().includes(normalizedPaymentSearch));
   const selectedDocuments = documents.filter((document) => !selectedPartnerId || document.partner_id === selectedPartnerId);
 
   useEffect(() => {
@@ -213,6 +215,7 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
   const handleTab = (event: MouseEvent<HTMLAnchorElement>, next: Partial<FilterState>) => {
     event.preventDefault();
     setPayments([]);
+    setPaymentSearch("");
     setLoadState("idle");
     setFilters((current) => filterState(current, next, kind));
   };
@@ -441,7 +444,7 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
           <label className="search-trigger workbench-search" htmlFor={`${kind}-search`}>
             <Search size={16} aria-hidden="true" />
             <span className="visually-hidden">Search {page.plural}</span>
-            <input id={`${kind}-search`} type="search" placeholder={`Search by number or ${page.partner}`} disabled />
+            <input id={`${kind}-search`} type="search" placeholder={`Search by number or ${page.partner}`} value={paymentSearch} onChange={(event) => setPaymentSearch(event.target.value)} disabled={!canUseWorkspace || viewState !== "ready"} />
           </label>
           <label className="visually-hidden" htmlFor={`${kind}-status-filter`}>Payment status filter</label>
           <select id={`${kind}-status-filter`} className="filter-select" aria-label="Payment status filter" value={filters.status} onChange={(event) => {
@@ -486,7 +489,7 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
                   </tr>
                 );
               }) : (
-                <tr><td className="muted-cell" colSpan={7}>{viewState === "loading" ? `Loading ${page.plural}…` : viewState === "error" ? `${page.title} unavailable` : viewState === "ready" ? `No ${page.plural} to display` : `No connected ${page.plural}`}</td></tr>
+                <tr><td className="muted-cell" colSpan={7}>{viewState === "loading" ? `Loading ${page.plural}…` : viewState === "error" ? `${page.title} unavailable` : viewState === "ready" && paymentSearch ? `No ${page.plural} match the current filter` : viewState === "ready" ? `No ${page.plural} to display` : `No connected ${page.plural}`}</td></tr>
               )}
             </tbody>
           </table>

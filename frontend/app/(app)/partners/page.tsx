@@ -1,12 +1,15 @@
 "use client";
 
 import {
+  Archive,
   Building2,
   ContactRound,
   FilePlus2,
   Filter,
   Link2,
+  Pencil,
   RefreshCw,
+  Save,
   Search,
   ShieldCheck,
   Tags,
@@ -25,12 +28,15 @@ import {
   subscribeToApiBaseUrl,
 } from "@/lib/api-client";
 import {
+  archivePartner,
   createPartner,
   createPartnerIdempotencyKey,
   listPartners,
+  updatePartner,
   type CreatePartnerInput,
   type Partner,
   type PartnerType,
+  type UpdatePartnerInput,
 } from "@/lib/partners";
 
 type LoadState = "idle" | "ready" | "error";
@@ -78,7 +84,7 @@ function updateLocation(filters: FilterState): void {
   window.history.replaceState(null, "", `/partners${query ? `?${query}` : ""}`);
 }
 
-function errorMessage(error: unknown, action: "load" | "create"): string {
+function errorMessage(error: unknown, action: "load" | "create" | "update" | "archive"): string {
   if (error instanceof ApiConfigurationError) {
     return "Connect the API endpoint before using partner data.";
   }
@@ -87,17 +93,21 @@ function errorMessage(error: unknown, action: "load" | "create"): string {
       return "Your session has expired. Sign in again to continue.";
     }
     if (error.status === 403) {
-      return action === "create"
-        ? "Your role cannot create partners in this organization."
-        : "Your role cannot view partners in this organization.";
+      if (action === "create") return "Your role cannot create partners in this organization.";
+      if (action === "update") return "Your role cannot update partners in this organization.";
+      if (action === "archive") return "Your role cannot archive partners in this organization.";
+      return "Your role cannot view partners in this organization.";
     }
-    if (error.status === 409 && action === "create") {
-      return "That partner code already exists or the request conflicts with current data.";
+    if (error.status === 409) {
+      if (action === "create") return "That partner code already exists or the request conflicts with current data.";
+      if (action === "update") return "The partner changed elsewhere. Reload it before saving again.";
+      if (action === "archive") return "The partner changed elsewhere or is already archived. Reload the directory.";
     }
   }
-  return action === "load"
-    ? "Partner data is unavailable. Retry the request or review the API connection."
-    : "Partner could not be created. Review the fields and try again.";
+  if (action === "load") return "Partner data is unavailable. Retry the request or review the API connection.";
+  if (action === "update") return "Partner could not be updated. Review the fields and try again.";
+  if (action === "archive") return "Partner could not be archived. Review the current record and try again.";
+  return "Partner could not be created. Review the fields and try again.";
 }
 
 function formatPartnerType(type: PartnerType): string {
@@ -127,8 +137,10 @@ export default function PartnersPage() {
   const [notice, setNotice] = useState("");
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [createError, setCreateError] = useState("");
+  const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
+  const [archiveCandidate, setArchiveCandidate] = useState<Partner | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const canUseWorkspace = Boolean(configuredEndpoint && getAccessToken());
   const viewState: LoadState | "loading" | "disconnected" | "unauthenticated" = !configuredEndpoint
@@ -189,34 +201,88 @@ export default function PartnersPage() {
     setFilters((current) => updateFilters(current, next));
   };
 
-  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
+  const openCreate = () => {
+    setActionError("");
+    setEditingPartner(null);
+    setIsCreateOpen(true);
+  };
+
+  const openEdit = (partner: Partner) => {
+    setActionError("");
+    setIsCreateOpen(false);
+    setEditingPartner(partner);
+  };
+
+  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setCreateError("");
+    setActionError("");
     const data = new FormData(event.currentTarget);
     const optionalValue = (name: string) => {
       const value = String(data.get(name) || "").trim();
       return value || undefined;
     };
-    const payload: CreatePartnerInput = {
-      partner_code: String(data.get("partner_code") || "").trim(),
-      partner_type: String(data.get("partner_type") || "customer") as PartnerType,
-      display_name: String(data.get("display_name") || "").trim(),
-      tax_id: optionalValue("tax_id"),
-      email: optionalValue("email"),
-      phone: optionalValue("phone"),
-      payment_terms_days: Number(data.get("payment_terms_days") || 0),
-    };
-
-    setIsCreating(true);
+    setIsSaving(true);
     try {
-      const created = await createPartner(payload, createPartnerIdempotencyKey());
-      setPartners((current) => [...current, created].sort((left, right) => left.partner_code.localeCompare(right.partner_code)));
+      if (editingPartner) {
+        const payload: UpdatePartnerInput = {
+          expected_version: editingPartner.version,
+          display_name: String(data.get("display_name") || "").trim(),
+          legal_name: optionalValue("legal_name") || null,
+          tax_id: optionalValue("tax_id") || null,
+          tax_branch: optionalValue("tax_branch") || null,
+          email: optionalValue("email") || null,
+          phone: optionalValue("phone") || null,
+          payment_terms_days: Number(data.get("payment_terms_days") || 0),
+          credit_limit: String(data.get("credit_limit") || "0.00").trim(),
+        };
+        const updated = await updatePartner(editingPartner.id, payload, createPartnerIdempotencyKey("update"));
+        setPartners((current) => current.map((partner) => partner.id === updated.id ? updated : partner));
+        setNotice("Partner updated");
+      } else {
+        const payload: CreatePartnerInput = {
+          partner_code: String(data.get("partner_code") || "").trim(),
+          partner_type: String(data.get("partner_type") || "customer") as PartnerType,
+          display_name: String(data.get("display_name") || "").trim(),
+          legal_name: optionalValue("legal_name"),
+          tax_id: optionalValue("tax_id"),
+          tax_branch: optionalValue("tax_branch"),
+          email: optionalValue("email"),
+          phone: optionalValue("phone"),
+          payment_terms_days: Number(data.get("payment_terms_days") || 0),
+          credit_limit: String(data.get("credit_limit") || "0.00").trim(),
+        };
+        const created = await createPartner(payload, createPartnerIdempotencyKey());
+        setPartners((current) => [...current, created].sort((left, right) => left.partner_code.localeCompare(right.partner_code)));
+        setNotice("Partner created");
+      }
+      setEditingPartner(null);
       setIsCreateOpen(false);
-      setNotice("Partner created");
     } catch (error: unknown) {
-      setCreateError(errorMessage(error, "create"));
+      setActionError(errorMessage(error, editingPartner ? "update" : "create"));
     } finally {
-      setIsCreating(false);
+      setIsSaving(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!archiveCandidate) return;
+    setActionError("");
+    setIsSaving(true);
+    try {
+      const archived = await archivePartner(
+        archiveCandidate.id,
+        archiveCandidate.version,
+        createPartnerIdempotencyKey("archive"),
+      );
+      setPartners((current) => filters.includeArchived
+        ? current.map((partner) => partner.id === archived.id ? archived : partner)
+        : current.filter((partner) => partner.id !== archived.id));
+      setArchiveCandidate(null);
+      setNotice("Partner archived");
+    } catch (error: unknown) {
+      setActionError(errorMessage(error, "archive"));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -229,6 +295,8 @@ export default function PartnersPage() {
     error: "Data unavailable",
   }[viewState];
   const statusTone = viewState === "ready" ? "success" : viewState === "error" || viewState === "unauthenticated" ? "danger" : viewState === "loading" ? "info" : "warning";
+  const formIsOpen = isCreateOpen || Boolean(editingPartner);
+  const formIsEdit = Boolean(editingPartner);
 
   return (
     <div className="page-stack">
@@ -240,7 +308,7 @@ export default function PartnersPage() {
         </div>
         <div className="page-actions">
           <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
-          <button className="button button-primary" type="button" disabled={!canUseWorkspace} onClick={() => { setCreateError(""); setIsCreateOpen(true); }}>
+          <button className="button button-primary" type="button" disabled={!canUseWorkspace} onClick={openCreate}>
             <FilePlus2 size={15} aria-hidden="true" /> Add partner
           </button>
         </div>
@@ -281,28 +349,45 @@ export default function PartnersPage() {
       ) : null}
 
       {notice ? <p className="form-message" role="status" aria-live="polite">{notice}</p> : null}
+      {actionError ? <p className="form-message" role="alert">{actionError}</p> : null}
 
-      {isCreateOpen ? (
+      {archiveCandidate ? (
+        <section className="connection-banner" aria-labelledby="archive-partner-title" role="alert">
+          <div className="connection-banner-copy">
+            <Archive size={19} aria-hidden="true" />
+            <div>
+              <strong id="archive-partner-title">Archive {archiveCandidate.partner_code}?</strong>
+              <p>{archiveCandidate.display_name} will leave active partner lists. Existing posted documents and audit history remain unchanged.</p>
+            </div>
+          </div>
+          <div className="page-actions">
+            <button className="button button-danger" type="button" onClick={handleArchive} disabled={isSaving} aria-busy={isSaving}><Archive size={15} aria-hidden="true" /> {isSaving ? "Archiving…" : "Confirm archive"}</button>
+            <button className="button button-secondary" type="button" onClick={() => setArchiveCandidate(null)} disabled={isSaving}>Cancel</button>
+          </div>
+        </section>
+      ) : null}
+
+      {formIsOpen ? (
         <section className="panel" aria-labelledby="create-partner-title">
           <div className="section-heading-row">
             <div className="section-heading">
-              <h2 id="create-partner-title">Create partner</h2>
-              <p>Start with the required identity fields. Server policy validates the organization boundary and duplicate code.</p>
+              <h2 id="create-partner-title">{formIsEdit ? "Edit partner" : "Create partner"}</h2>
+              <p>{formIsEdit ? "Changes use the current record version and append an audit event." : "Start with the required identity fields. Server policy validates the organization boundary and duplicate code."}</p>
             </div>
-            <button className="icon-button" type="button" aria-label="Close create partner form" onClick={() => setIsCreateOpen(false)}>
+            <button className="icon-button" type="button" aria-label="Close partner form" onClick={() => { setIsCreateOpen(false); setEditingPartner(null); }}>
               <X size={17} aria-hidden="true" />
             </button>
           </div>
-          <form className="form-grid" onSubmit={handleCreate}>
+          <form className="form-grid" onSubmit={handleSave}>
             <div className="panel-grid two-column">
               <div className="field">
                 <label htmlFor="partner-code">Partner code</label>
-                <input id="partner-code" name="partner_code" required minLength={2} maxLength={64} pattern="[A-Za-z0-9][A-Za-z0-9._/-]*" placeholder="CUS-0001" />
+                <input id="partner-code" name="partner_code" required minLength={2} maxLength={64} pattern="[A-Za-z0-9][A-Za-z0-9._/-]*" placeholder="CUS-0001" defaultValue={editingPartner?.partner_code || ""} readOnly={formIsEdit} />
                 <small>Stable code used across documents and reports.</small>
               </div>
               <div className="field">
                 <label htmlFor="partner-type">Partner type</label>
-                <select id="partner-type" name="partner_type" defaultValue="customer">
+                <select id="partner-type" name="partner_type" defaultValue={editingPartner?.partner_type || "customer"} disabled={formIsEdit}>
                   <option value="customer">Customer</option>
                   <option value="vendor">Vendor</option>
                   <option value="both">Customer & vendor</option>
@@ -310,27 +395,42 @@ export default function PartnersPage() {
               </div>
               <div className="field">
                 <label htmlFor="partner-name">Partner name</label>
-                <input id="partner-name" name="display_name" required maxLength={250} placeholder="Company or person name" />
+                <input id="partner-name" name="display_name" required maxLength={250} placeholder="Company or person name" defaultValue={editingPartner?.display_name || ""} />
+              </div>
+              <div className="field">
+                <label htmlFor="legal-name">Legal name</label>
+                <input id="legal-name" name="legal_name" maxLength={250} placeholder="Registered legal name" defaultValue={editingPartner?.legal_name || ""} />
               </div>
               <div className="field">
                 <label htmlFor="tax-id">Tax ID</label>
-                <input id="tax-id" name="tax_id" maxLength={32} inputMode="numeric" placeholder="Optional Thai tax ID" />
+                <input id="tax-id" name="tax_id" maxLength={32} inputMode="numeric" placeholder="Optional Thai tax ID" defaultValue={editingPartner?.tax_id || ""} />
+              </div>
+              <div className="field">
+                <label htmlFor="tax-branch">Tax branch</label>
+                <input id="tax-branch" name="tax_branch" maxLength={20} inputMode="numeric" placeholder="00000" defaultValue={editingPartner?.tax_branch || "00000"} />
               </div>
               <div className="field">
                 <label htmlFor="partner-email">Email</label>
-                <input id="partner-email" name="email" type="email" maxLength={320} placeholder="finance@example.com" />
+                <input id="partner-email" name="email" type="email" maxLength={320} placeholder="finance@example.com" defaultValue={editingPartner?.email || ""} />
+              </div>
+              <div className="field">
+                <label htmlFor="partner-phone">Phone</label>
+                <input id="partner-phone" name="phone" maxLength={50} placeholder="+66 2 000 0000" defaultValue={editingPartner?.phone || ""} />
               </div>
               <div className="field">
                 <label htmlFor="payment-terms">Payment terms (days)</label>
-                <input id="payment-terms" name="payment_terms_days" type="number" min={0} max={3650} defaultValue={0} />
+                <input id="payment-terms" name="payment_terms_days" type="number" min={0} max={3650} defaultValue={editingPartner?.payment_terms_days || 0} />
+              </div>
+              <div className="field">
+                <label htmlFor="credit-limit">Credit limit</label>
+                <input id="credit-limit" name="credit_limit" type="number" min={0} step="0.01" defaultValue={editingPartner?.credit_limit || "0.00"} />
               </div>
             </div>
-            {createError ? <p className="form-message" role="alert">{createError}</p> : null}
             <div className="page-actions">
-              <button className="button button-primary" type="submit" disabled={isCreating} aria-busy={isCreating}>
-                <FilePlus2 size={15} aria-hidden="true" /> {isCreating ? "Creating…" : "Create partner"}
+              <button className="button button-primary" type="submit" disabled={isSaving} aria-busy={isSaving}>
+                {formIsEdit ? <Save size={15} aria-hidden="true" /> : <FilePlus2 size={15} aria-hidden="true" />} {isSaving ? "Saving…" : formIsEdit ? "Save partner" : "Create partner"}
               </button>
-              <button className="button button-secondary" type="button" disabled={isCreating} onClick={() => setIsCreateOpen(false)}>Cancel</button>
+              <button className="button button-secondary" type="button" disabled={isSaving} onClick={() => { setIsCreateOpen(false); setEditingPartner(null); }}>Cancel</button>
             </div>
           </form>
         </section>
@@ -383,6 +483,7 @@ export default function PartnersPage() {
                 <th scope="col">Type</th>
                 <th scope="col">Payment terms</th>
                 <th scope="col">Status</th>
+                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -393,9 +494,10 @@ export default function PartnersPage() {
                   <td>{formatPartnerType(partner.partner_type)}</td>
                   <td>{partner.payment_terms_days} days</td>
                   <td><StatusBadge tone={partner.is_active ? "success" : "neutral"}>{partner.is_active ? "Active" : "Archived"}</StatusBadge></td>
+                  <td><div className="page-actions"><button className="button button-ghost" type="button" onClick={() => openEdit(partner)}><Pencil size={14} aria-hidden="true" /> Edit</button>{partner.is_active ? <button className="button button-ghost" type="button" onClick={() => { setActionError(""); setArchiveCandidate(partner); }}><Archive size={14} aria-hidden="true" /> Archive</button> : null}</div></td>
                 </tr>
               )) : (
-                <tr><td className="muted-cell" colSpan={5}>{viewState === "loading" ? "Loading partner records…" : viewState === "error" ? "Partner records unavailable" : viewState === "ready" ? "No partners yet" : "No connected partners"}</td></tr>
+                <tr><td className="muted-cell" colSpan={6}>{viewState === "loading" ? "Loading partner records…" : viewState === "error" ? "Partner records unavailable" : viewState === "ready" ? "No partners yet" : "No connected partners"}</td></tr>
               )}
             </tbody>
           </table>

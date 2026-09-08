@@ -493,6 +493,18 @@ h4 {
   background: var(--color-surface-raised);
 }
 
+.button-danger {
+  border-color: color-mix(in srgb, var(--color-destructive) 55%, var(--color-border));
+  background: var(--color-destructive-soft);
+  color: var(--color-destructive);
+}
+
+.button-danger:hover {
+  border-color: var(--color-destructive);
+  background: var(--color-destructive);
+  color: #ffffff;
+}
+
 .button-ghost {
   color: var(--color-primary);
 }

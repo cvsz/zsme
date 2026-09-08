@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { type FormEvent, type MouseEvent, useEffect, useState, useSyncExternalStore } from "react";
 
 import { DataCard } from "@/components/design-system/data-card";
@@ -120,6 +121,13 @@ function updateLocation(kind: DocumentKind, filters: FilterState): void {
   window.history.replaceState(null, "", `/${kind === "invoice" ? "invoices" : "bills"}${query ? `?${query}` : ""}`);
 }
 
+function clearCreateIntent(kind: DocumentKind): void {
+  const params = new URLSearchParams(window.location.search);
+  params.delete("create");
+  const query = params.toString();
+  window.history.replaceState(null, "", `/${kind === "invoice" ? "invoices" : "bills"}${query ? `?${query}` : ""}`);
+}
+
 function safeError(error: unknown, action: "load" | "create" | "post", singular: string): string {
   if (error instanceof ApiConfigurationError) {
     return "Connect the API endpoint before using live document data.";
@@ -167,6 +175,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
   const page = copy[kind];
   const DirectionIcon = page.directionIcon;
   const AccentIcon = page.accentIcon;
+  const searchParams = useSearchParams();
   const configuredEndpoint = useSyncExternalStore(
     subscribeToApiBaseUrl,
     getApiBaseUrl,
@@ -182,6 +191,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
   const [actionError, setActionError] = useState("");
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createIntentDismissed, setCreateIntentDismissed] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [postingId, setPostingId] = useState<string | null>(null);
 
@@ -195,6 +205,13 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
         : loadState;
   const visibleDocuments = viewState === "disconnected" || viewState === "unauthenticated" ? [] : documents;
   const partnerNames = new Map(partners.map((partner) => [partner.id, partner.display_name]));
+  const showCreateForm = isCreateOpen || (searchParams.get("create") === "1" && !createIntentDismissed);
+
+  const closeCreate = () => {
+    setIsCreateOpen(false);
+    setCreateIntentDismissed(true);
+    clearCreateIntent(kind);
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -282,7 +299,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
     try {
       const created = await createDocument(kind, payload, createDocumentIdempotencyKey("create"));
       setDocuments((current) => [created, ...current]);
-      setIsCreateOpen(false);
+      closeCreate();
       setNotice(`Draft ${page.singular} created`);
     } catch (error: unknown) {
       setActionError(safeError(error, "create", page.singular));
@@ -314,7 +331,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
         </div>
         <div className="page-actions">
           <StatusBadge tone={statusBadgeTone}>{statusLabel}</StatusBadge>
-          <button className="button button-primary" type="button" disabled={!canUseWorkspace || viewState !== "ready" || partners.length === 0} onClick={() => { setActionError(""); setIsCreateOpen(true); }}>
+          <button className="button button-primary" type="button" disabled={!canUseWorkspace || viewState !== "ready" || partners.length === 0} onClick={() => { setActionError(""); setCreateIntentDismissed(false); setIsCreateOpen(true); }}>
             <FilePlus2 size={15} aria-hidden="true" /> {page.action}
           </button>
         </div>
@@ -357,14 +374,14 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
       {notice ? <p className="form-message" role="status" aria-live="polite">{notice}</p> : null}
       {actionError ? <p className="form-message" role="alert">{actionError}</p> : null}
 
-      {isCreateOpen ? (
+      {showCreateForm ? (
         <section className="panel" aria-labelledby={`${kind}-create-title`}>
           <div className="section-heading-row">
             <div className="section-heading">
               <h2 id={`${kind}-create-title`}>{page.action}</h2>
               <p>Create a draft; posting remains a separate explicit control action.</p>
             </div>
-            <button className="icon-button" type="button" aria-label={`Close create ${page.singular} form`} onClick={() => setIsCreateOpen(false)}>
+            <button className="icon-button" type="button" aria-label={`Close create ${page.singular} form`} onClick={closeCreate}>
               <X size={17} aria-hidden="true" />
             </button>
           </div>
@@ -431,7 +448,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
               <button className="button button-primary" type="submit" disabled={isCreating || partners.length === 0} aria-busy={isCreating}>
                 <FilePlus2 size={15} aria-hidden="true" /> {isCreating ? "Creating…" : page.action}
               </button>
-              <button className="button button-secondary" type="button" disabled={isCreating} onClick={() => setIsCreateOpen(false)}>Cancel</button>
+              <button className="button button-secondary" type="button" disabled={isCreating} onClick={closeCreate}>Cancel</button>
             </div>
           </form>
         </section>

@@ -46,11 +46,26 @@ export type CreatePartnerInput = {
   partner_code: string;
   partner_type: PartnerType;
   display_name: string;
+  legal_name?: string;
   tax_id?: string;
   tax_branch?: string;
   email?: string;
   phone?: string;
   payment_terms_days?: number;
+  credit_limit?: string;
+};
+
+export type UpdatePartnerInput = {
+  expected_version: number;
+  display_name?: string;
+  legal_name?: string | null;
+  tax_id?: string | null;
+  tax_branch?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  payment_terms_days?: number;
+  credit_limit?: string;
+  tags?: string[];
 };
 
 export function listPartners(
@@ -82,7 +97,33 @@ export function createPartner(
   });
 }
 
-export function createPartnerIdempotencyKey(): string {
+export function updatePartner(
+  partnerId: string,
+  input: UpdatePartnerInput,
+  idempotencyKey: string,
+): Promise<Partner> {
+  return apiRequest<Partner>(`/v1/partners/${partnerId}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+}
+
+export function archivePartner(
+  partnerId: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+): Promise<Partner> {
+  return apiRequest<Partner>(`/v1/partners/${partnerId}/archive`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ expected_version: expectedVersion }),
+  });
+}
+
+export function createPartnerIdempotencyKey(
+  operation: "create" | "update" | "archive" = "create",
+): string {
   let randomId = globalThis.crypto?.randomUUID?.();
   if (!randomId && globalThis.crypto?.getRandomValues) {
     const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
@@ -91,5 +132,5 @@ export function createPartnerIdempotencyKey(): string {
   if (!randomId) {
     throw new Error("Secure randomness is unavailable");
   }
-  return `partner-create-${randomId}`;
+  return `partner-${operation}-${randomId}`;
 }

@@ -79,6 +79,8 @@ test('sales control center loads customer and invoice data from live contracts',
   await expect(page.getByRole('cell', { name: /INV-0001/ })).toBeVisible();
   await expect(page.getByText('THB 1,070.00', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('link', { name: 'Create invoice' })).toHaveAttribute('href', '/invoices?create=1');
+  await page.getByRole('link', { name: 'Create invoice' }).click();
+  await expect(page.getByRole('heading', { name: 'Create invoice', exact: true })).toBeVisible();
 });
 
 test('sales control center reports a safe API failure without financial values', async ({ page }) => {

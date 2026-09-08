@@ -113,3 +113,45 @@ test('partner creation sends an idempotency key and updates the directory', asyn
   });
   expect(idempotencyKey).toMatch(/^partner-create-/);
 });
+
+test('partner lifecycle actions send optimistic versions and preserve audit-safe archive behavior', async ({ page }) => {
+  await configureConnectedWorkspace(page);
+  let updateBody: Record<string, unknown> | undefined;
+  let updateKey = '';
+  let archiveBody: Record<string, unknown> | undefined;
+  let archiveKey = '';
+  await page.route('**/v1/partners**', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      updateBody = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>;
+      updateKey = route.request().headers()['idempotency-key'] || '';
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...partner, display_name: 'Siam Craft Holdings', version: 2 }) });
+      return;
+    }
+    if (route.request().method() === 'POST' && route.request().url().endsWith('/archive')) {
+      archiveBody = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>;
+      archiveKey = route.request().headers()['idempotency-key'] || '';
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...partner, display_name: 'Siam Craft Holdings', is_active: false, version: 3 }) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([partner]) });
+  });
+
+  await page.goto('/partners');
+  await page.getByRole('button', { name: 'Edit' }).click();
+  await page.getByLabel('Partner name').fill('Siam Craft Holdings');
+  await page.getByRole('button', { name: 'Save partner', exact: true }).click();
+
+  await expect(page.getByText('Partner updated')).toBeVisible();
+  await expect(page.getByText('Siam Craft Holdings', { exact: true })).toBeVisible();
+  expect(updateBody).toMatchObject({ expected_version: 1, display_name: 'Siam Craft Holdings' });
+  expect(updateKey).toMatch(/^partner-update-/);
+
+  await page.getByRole('button', { name: 'Archive' }).click();
+  await expect(page.getByRole('alert', { name: /Archive CUS-0001/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Confirm archive' }).click();
+
+  await expect(page.getByText('Partner archived')).toBeVisible();
+  expect(archiveBody).toEqual({ expected_version: 2 });
+  expect(archiveKey).toMatch(/^partner-archive-/);
+  await expect(page.getByRole('button', { name: 'Archive' })).toHaveCount(0);
+});
