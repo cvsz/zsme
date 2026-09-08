@@ -797,6 +797,65 @@ h4 {
   margin-top: var(--space-md);
 }
 
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.report-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 6.5rem;
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.report-card:hover,
+.report-card.is-active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  transform: translateY(-1px);
+}
+
+.report-card > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.report-card strong {
+  color: var(--color-foreground);
+  font-family: var(--font-heading);
+  font-size: 0.86rem;
+}
+
+.report-card small {
+  color: var(--color-foreground-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.report-card .status-badge {
+  grid-column: 2;
+}
+
+.report-card-icon {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
 .workflow-rail {
   display: grid;
   gap: var(--space-sm);
@@ -1146,6 +1205,10 @@ h4 {
     gap: 0;
   }
 
+  .report-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .workflow-rail li {
     position: relative;
     min-height: 6rem;
@@ -1213,6 +1276,10 @@ h4 {
 
   .dashboard-columns {
     grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 0.5fr);
+  }
+
+  .report-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

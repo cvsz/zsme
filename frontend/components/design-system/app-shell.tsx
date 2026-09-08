@@ -8,6 +8,7 @@ import {
   CircleHelp,
   FileText,
   ReceiptText,
+  BarChart3,
   ScrollText,
   LayoutDashboard,
   Menu,
@@ -62,6 +63,7 @@ const navigation = [
   { href: "/sales", label: "Sales & billing", icon: FileText },
   { href: "/invoices", label: "Invoices", icon: ReceiptText },
   { href: "/bills", label: "Vendor bills", icon: ScrollText },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 

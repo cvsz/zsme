@@ -31,7 +31,25 @@ test('theme switch exposes both dark and light modes', async ({ page }) => {
 });
 
 test('core workspace routes render their own page headings', async ({ page }) => {
-  for (const route of ['/dashboard', '/partners', '/accounting', '/sales', '/invoices', '/bills', '/settings']) {
+  for (const route of [
+    '/dashboard',
+    '/partners',
+    '/accounting',
+    '/accounting/chart-of-accounts',
+    '/accounting/periods',
+    '/accounting/reconciliation',
+    '/sales',
+    '/invoices',
+    '/bills',
+    '/reports',
+    '/reports/trial-balance',
+    '/reports/profit-loss',
+    '/reports/balance-sheet',
+    '/reports/general-ledger',
+    '/reports/aged-receivable',
+    '/reports/aged-payable',
+    '/settings',
+  ]) {
     await page.goto(route);
     await expect(page.locator('h1')).toBeVisible();
     await expect(page.locator('body')).not.toContainText('404');

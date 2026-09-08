@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -24,13 +25,31 @@ from app.db.models.mixins import IdentifiedTimestampMixin, OrganizationScopeMixi
 class ChartAccount(IdentifiedTimestampMixin, OrganizationScopeMixin, Base):
     __tablename__ = "chart_accounts"
     __table_args__ = (
+        CheckConstraint(
+            "account_type IN ('asset', 'liability', 'equity', 'revenue', 'expense')",
+            name="ck_chart_accounts_type",
+        ),
         UniqueConstraint("organization_id", "code", name="uq_chart_accounts_org_code"),
     )
 
     code: Mapped[str] = mapped_column(String(32), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    parent_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("chart_accounts.id", ondelete="RESTRICT"), nullable=True
+    )
+    is_control: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    version: Mapped[int] = mapped_column(default=1, server_default="1", nullable=False)
+
+    parent: Mapped[ChartAccount | None] = relationship(
+        "ChartAccount", remote_side="ChartAccount.id", back_populates="children"
+    )
+    children: Mapped[list[ChartAccount]] = relationship(
+        "ChartAccount", back_populates="parent", cascade="save-update"
+    )
 
 
 class FiscalPeriod(IdentifiedTimestampMixin, OrganizationScopeMixin, Base):
@@ -47,6 +66,8 @@ class FiscalPeriod(IdentifiedTimestampMixin, OrganizationScopeMixin, Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(default=1, server_default="1", nullable=False)
 
 
 class JournalEntryRecord(IdentifiedTimestampMixin, OrganizationScopeMixin, Base):

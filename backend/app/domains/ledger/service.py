@@ -95,6 +95,11 @@ def post_journal_entry(
     missing_accounts = sorted(account_codes - accounts_by_code.keys())
     if missing_accounts:
         raise DomainError(f"unknown or inactive account: {', '.join(missing_accounts)}")
+    control_accounts = sorted(
+        account.code for account in accounts if account.is_control and account.code in account_codes
+    )
+    if control_accounts:
+        raise DomainError(f"control account cannot receive posting: {', '.join(control_accounts)}")
 
     now = datetime.now(UTC)
     entry = JournalEntryRecord(

@@ -16,12 +16,18 @@ ArReadDep = Annotated[Principal, Depends(require_permission("ar:read"))]
 ArWriteDep = Annotated[Principal, Depends(require_permission("ar:write"))]
 ApReadDep = Annotated[Principal, Depends(require_permission("ap:read"))]
 ApWriteDep = Annotated[Principal, Depends(require_permission("ap:write"))]
+AccountingReadDep = Annotated[Principal, Depends(require_permission("accounting:read"))]
+AccountingWriteDep = Annotated[Principal, Depends(require_permission("accounting:write"))]
+ReportsReadDep = Annotated[Principal, Depends(require_permission("reports:read"))]
 
 __all__ = [
     "OrganizationReadDep",
     "OrganizationWriteDep",
     "ApReadDep",
     "ApWriteDep",
+    "AccountingReadDep",
+    "AccountingWriteDep",
+    "ReportsReadDep",
     "ArReadDep",
     "ArWriteDep",
     "PartnerReadDep",

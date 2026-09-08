@@ -28,8 +28,12 @@ def upgrade() -> None:
         sa.Column("control_account_code", sa.String(length=32), nullable=False),
         sa.Column("tax_account_code", sa.String(length=32), nullable=True),
         sa.Column("memo", sa.String(length=500), nullable=True),
-        sa.Column("subtotal", sa.Numeric(precision=18, scale=2), server_default="0", nullable=False),
-        sa.Column("tax_total", sa.Numeric(precision=18, scale=2), server_default="0", nullable=False),
+        sa.Column(
+            "subtotal", sa.Numeric(precision=18, scale=2), server_default="0", nullable=False
+        ),
+        sa.Column(
+            "tax_total", sa.Numeric(precision=18, scale=2), server_default="0", nullable=False
+        ),
         sa.Column("total", sa.Numeric(precision=18, scale=2), server_default="0", nullable=False),
         sa.Column("status", sa.String(length=20), server_default="draft", nullable=False),
         sa.Column("ledger_entry_id", sa.Uuid(), nullable=True),
@@ -142,7 +146,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_financial_document_lines_document_id", table_name="financial_document_lines")
-    op.drop_index(op.f("ix_financial_document_lines_tenant_id"), table_name="financial_document_lines")
+    op.drop_index(
+        op.f("ix_financial_document_lines_tenant_id"), table_name="financial_document_lines"
+    )
     op.drop_index(
         op.f("ix_financial_document_lines_organization_id"), table_name="financial_document_lines"
     )

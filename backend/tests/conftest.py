@@ -81,6 +81,9 @@ def seeded_user(db_session: Session) -> User:
             "ar:write",
             "ap:read",
             "ap:write",
+            "accounting:read",
+            "accounting:write",
+            "reports:read",
         ],
         is_system=True,
     )
