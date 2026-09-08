@@ -314,7 +314,7 @@ git commit -S -m "feat: add auditable idempotent ledger posting"
 - `POST /v1/organizations` creates an organization only for an authorized principal.
 - Errors use `application/problem+json` with `code`, `detail`, `correlation_id`, and optional `fields`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_ready_reports_dependency_failure(client, unavailable_db):
@@ -336,17 +336,17 @@ def test_domain_error_has_stable_problem_shape(client, authenticated_headers):
     assert response.json()["correlation_id"]
 ```
 
-- [ ] **Step 2: Run focused tests and verify absent route/error behavior**
+- [x] **Step 2: Run focused tests and verify absent route/error behavior**
 
 Run: `cd backend && pytest -q tests/test_platform_api.py`
 
 Expected: FAIL because readiness, organization routes, and stable error mapping do not exist.
 
-- [ ] **Step 3: Implement contracts**
+- [x] **Step 3: Implement contracts**
 
 Register exception handlers, request correlation middleware, JSON redacted logging, liveness/readiness routes, and scoped organization CRUD. Ensure readiness never leaks the database URL or credentials.
 
-- [ ] **Step 4: Run full backend checks**
+- [x] **Step 4: Run full backend checks**
 
 Run: `cd backend && ruff check . && pytest -q`
 
@@ -419,7 +419,7 @@ Run: `cd frontend && npm test -- --project=chromium && npm run build`
 
 Expected: PASS with no accessibility violations in the shell suite, no mobile horizontal overflow, and a successful production build.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend

@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
+from app.api.errors import register_exception_handlers
+from app.api.health import router as health_router
+from app.api.organizations import router as organizations_router
 from app.domain.ledger import JournalEntry, JournalLine
 from app.domains.ledger.api import router as ledger_router
 
@@ -10,8 +13,11 @@ app = FastAPI(
     description="Thailand-first SME accounting API with double-entry accounting invariants.",
 )
 
+register_exception_handlers(app)
 app.include_router(auth_router)
 app.include_router(ledger_router)
+app.include_router(health_router)
+app.include_router(organizations_router)
 
 
 @app.get("/health")
