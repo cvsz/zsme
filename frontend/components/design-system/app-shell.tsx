@@ -10,6 +10,7 @@ import {
   ReceiptText,
   BarChart3,
   CircleDollarSign,
+  Landmark,
   ScrollText,
   WalletCards,
   LayoutDashboard,
@@ -68,6 +69,7 @@ const navigation = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/receipts", label: "Receipts", icon: WalletCards },
   { href: "/disbursements", label: "Disbursements", icon: CircleDollarSign },
+  { href: "/banking", label: "Banking", icon: Landmark },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 

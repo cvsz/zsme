@@ -6,11 +6,13 @@ from app.api.health import router as health_router
 from app.api.organizations import router as organizations_router
 from app.domain.ledger import JournalEntry, JournalLine
 from app.domains.accounting.api import router as accounting_master_router
+from app.domains.banking.api import router as banking_router
 from app.domains.documents.api import router as documents_router
 from app.domains.ledger.api import router as ledger_router
 from app.domains.partners.api import router as partners_router
 from app.domains.payments.api import router as payments_router
 from app.domains.reports.api import router as reports_router
+from app.domains.tax.api import router as tax_router
 
 app = FastAPI(
     title="ZSME Accounting API",
@@ -28,6 +30,8 @@ app.include_router(documents_router)
 app.include_router(accounting_master_router)
 app.include_router(reports_router)
 app.include_router(payments_router)
+app.include_router(tax_router)
+app.include_router(banking_router)
 
 
 @app.get("/health")

@@ -1,6 +1,9 @@
 from app.db.base import Base
 from app.db.models import (
     AuditEvent,
+    BankAccount,
+    BankImportBatch,
+    BankTransaction,
     BusinessPartner,
     ChartAccount,
     FinancialDocument,
@@ -15,6 +18,7 @@ from app.db.models import (
     PaymentRecord,
     Role,
     SessionToken,
+    TaxRateRule,
     Tenant,
     User,
     UserRole,
@@ -23,6 +27,9 @@ from app.db.models import (
 __all__ = [
     "AuditEvent",
     "Base",
+    "BankAccount",
+    "BankImportBatch",
+    "BankTransaction",
     "BusinessPartner",
     "ChartAccount",
     "FiscalPeriod",
@@ -35,6 +42,7 @@ __all__ = [
     "PartnerAddress",
     "PaymentAllocation",
     "PaymentRecord",
+    "TaxRateRule",
     "Role",
     "SessionToken",
     "Tenant",
