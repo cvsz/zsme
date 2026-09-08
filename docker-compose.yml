@@ -1,0 +1,30 @@
+services:
+  api:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://zsme:zsme@db:5432/zsme
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: zsme
+      POSTGRES_USER: zsme
+      POSTGRES_PASSWORD: zsme
+    ports:
+      - "5432:5432"
+    volumes:
+      - zsme_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zsme -d zsme"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  zsme_pgdata:
