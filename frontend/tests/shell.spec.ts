@@ -29,3 +29,11 @@ test('theme switch exposes both dark and light modes', async ({ page }) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(page.getByRole('button', { name: 'Switch to dark theme' })).toBeVisible();
 });
+
+test('core workspace routes render their own page headings', async ({ page }) => {
+  for (const route of ['/dashboard', '/partners', '/accounting', '/sales', '/settings']) {
+    await page.goto(route);
+    await expect(page.locator('h1')).toBeVisible();
+    await expect(page.locator('body')).not.toContainText('404');
+  }
+});

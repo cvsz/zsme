@@ -56,7 +56,7 @@ export default function DashboardPage() {
             <h2 id="activity-title">Recent activity</h2>
             <p>Immutable journal and operational events will appear here after connection.</p>
           </div>
-          <div className="data-table-wrap">
+          <div className="data-table-wrap" tabIndex={0} aria-label="Scroll recent activity table horizontally">
             <table className="data-table">
               <caption>Recent accounting and operational activity</caption>
               <thead>

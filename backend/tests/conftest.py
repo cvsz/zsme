@@ -71,7 +71,13 @@ def seeded_user(db_session: Session) -> User:
     role = Role(
         tenant=tenant,
         name="ADMIN",
-        permissions=["auth:read", "organization:read", "organization:write"],
+        permissions=[
+            "auth:read",
+            "organization:read",
+            "organization:write",
+            "partner:read",
+            "partner:write",
+        ],
         is_system=True,
     )
     db_session.add_all([tenant, organization, user, role])

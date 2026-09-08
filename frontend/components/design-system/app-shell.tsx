@@ -14,6 +14,7 @@ import {
   Settings,
   ShieldCheck,
   Sun,
+  UsersRound,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -54,6 +55,7 @@ function getServerHydration() {
 
 const navigation = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/partners", label: "Partners", icon: UsersRound },
   { href: "/accounting", label: "Accounting", icon: BookOpen },
   { href: "/sales", label: "Sales & billing", icon: FileText },
   { href: "/settings", label: "Settings", icon: Settings },

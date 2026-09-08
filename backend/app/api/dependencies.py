@@ -10,5 +10,14 @@ SessionDep = Annotated[Session, Depends(get_session)]
 PrincipalDep = Annotated[Principal, Depends(get_current_principal)]
 OrganizationReadDep = Annotated[Principal, Depends(require_permission("organization:read"))]
 OrganizationWriteDep = Annotated[Principal, Depends(require_permission("organization:write"))]
+PartnerReadDep = Annotated[Principal, Depends(require_permission("partner:read"))]
+PartnerWriteDep = Annotated[Principal, Depends(require_permission("partner:write"))]
 
-__all__ = ["OrganizationReadDep", "OrganizationWriteDep", "PrincipalDep", "SessionDep"]
+__all__ = [
+    "OrganizationReadDep",
+    "OrganizationWriteDep",
+    "PartnerReadDep",
+    "PartnerWriteDep",
+    "PrincipalDep",
+    "SessionDep",
+]
