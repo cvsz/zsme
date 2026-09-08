@@ -660,6 +660,14 @@ h4 {
   margin-bottom: var(--space-md);
 }
 
+.section-heading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
 .section-heading h2 {
   font-size: 1.15rem;
 }
@@ -756,6 +764,87 @@ h4 {
 
 .data-table .muted-cell {
   color: var(--color-foreground-subtle);
+}
+
+.workbench-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.workbench-search {
+  min-width: min(100%, 20rem);
+  flex: 1 1 16rem;
+  justify-content: flex-start;
+}
+
+.workbench-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-foreground);
+}
+
+.workbench-search input::placeholder {
+  color: var(--color-foreground-subtle);
+}
+
+.workbench-empty {
+  margin-top: var(--space-md);
+}
+
+.workflow-rail {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-rail li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-foreground-muted);
+}
+
+.workflow-rail li.is-current {
+  border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+  background: var(--color-primary-soft);
+}
+
+.workflow-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-surface-subtle);
+  color: var(--color-primary);
+}
+
+.workflow-rail li > span:last-child {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.workflow-rail strong {
+  color: var(--color-foreground);
+  font-family: var(--font-heading);
+  font-size: 0.84rem;
+}
+
+.workflow-rail small {
+  color: var(--color-foreground-muted);
+  font-size: 0.78rem;
 }
 
 .feature-list {
@@ -1050,6 +1139,26 @@ h4 {
 
   .search-trigger kbd {
     display: inline-block;
+  }
+
+  .workflow-rail {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .workflow-rail li {
+    position: relative;
+    min-height: 6rem;
+    border-radius: 0;
+    border-right: 1px solid var(--color-border);
+  }
+
+  .workflow-rail li:first-child {
+    padding-left: 0;
+  }
+
+  .workflow-rail li:last-child {
+    border-right: 0;
   }
 }
 

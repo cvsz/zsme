@@ -77,6 +77,10 @@ def seeded_user(db_session: Session) -> User:
             "organization:write",
             "partner:read",
             "partner:write",
+            "ar:read",
+            "ar:write",
+            "ap:read",
+            "ap:write",
         ],
         is_system=True,
     )
@@ -126,6 +130,27 @@ def ledger_ready(db_session: Session, seeded_user: User) -> FiscalPeriod:
             code="2101",
             name="Output VAT",
             account_type="liability",
+        ),
+        ChartAccount(
+            tenant_id=seeded_user.tenant_id,
+            organization_id=seeded_user.organization_id,
+            code="2100",
+            name="Accounts payable",
+            account_type="liability",
+        ),
+        ChartAccount(
+            tenant_id=seeded_user.tenant_id,
+            organization_id=seeded_user.organization_id,
+            code="1400",
+            name="Input VAT",
+            account_type="asset",
+        ),
+        ChartAccount(
+            tenant_id=seeded_user.tenant_id,
+            organization_id=seeded_user.organization_id,
+            code="5000",
+            name="Office supplies expense",
+            account_type="expense",
         ),
     ]
     period = FiscalPeriod(

@@ -41,7 +41,18 @@ def test_ready_reports_dependency_failure(client: TestClient) -> None:
         app.dependency_overrides.pop(get_session, None)
 
     assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "service_unavailable"
     assert response.json()["detail"] == "database unavailable"
+
+
+def test_authentication_failure_uses_problem_shape(client: TestClient) -> None:
+    response = client.get("/v1/auth/me")
+
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "authentication_required"
+    assert response.json()["correlation_id"]
 
 
 def test_organization_list_is_tenant_scoped(
@@ -71,4 +82,3 @@ def test_validation_error_has_stable_problem_shape(
     assert response.headers["content-type"].startswith("application/problem+json")
     assert response.json()["code"] == "validation_error"
     assert response.json()["correlation_id"]
-

@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.domains.ledger.service import DomainError
@@ -35,6 +35,21 @@ def _problem(
     return JSONResponse(body, status_code=status_code, media_type="application/problem+json")
 
 
+def _http_code(status_code: int) -> tuple[str, str]:
+    return {
+        400: ("bad_request", "Bad request"),
+        401: ("authentication_required", "Authentication required"),
+        403: ("forbidden", "Forbidden"),
+        404: ("not_found", "Resource not found"),
+        405: ("method_not_allowed", "Method not allowed"),
+        409: ("conflict", "Conflict"),
+        422: ("validation_error", "Validation error"),
+        429: ("rate_limited", "Too many requests"),
+        500: ("internal_error", "Internal server error"),
+        503: ("service_unavailable", "Service unavailable"),
+    }.get(status_code, ("http_error", "Request failed"))
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.middleware("http")
     async def correlation_middleware(request: Request, call_next):
@@ -44,6 +59,18 @@ def register_exception_handlers(app: FastAPI) -> None:
         response = await call_next(request)
         response.headers["X-Correlation-ID"] = correlation_id
         return response
+
+    @app.exception_handler(HTTPException)
+    async def http_error_handler(request: Request, exc: HTTPException):
+        code, title = _http_code(exc.status_code)
+        detail = exc.detail if isinstance(exc.detail, str) else "request failed"
+        return _problem(
+            request,
+            status_code=exc.status_code,
+            code=code,
+            title=title,
+            detail=detail,
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError):
@@ -73,4 +100,3 @@ def register_exception_handlers(app: FastAPI) -> None:
             title="Domain operation rejected",
             detail=str(exc),
         )
-

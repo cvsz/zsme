@@ -7,6 +7,8 @@ import {
   ChevronDown,
   CircleHelp,
   FileText,
+  ReceiptText,
+  ScrollText,
   LayoutDashboard,
   Menu,
   Moon,
@@ -58,6 +60,8 @@ const navigation = [
   { href: "/partners", label: "Partners", icon: UsersRound },
   { href: "/accounting", label: "Accounting", icon: BookOpen },
   { href: "/sales", label: "Sales & billing", icon: FileText },
+  { href: "/invoices", label: "Invoices", icon: ReceiptText },
+  { href: "/bills", label: "Vendor bills", icon: ScrollText },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
