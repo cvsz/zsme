@@ -1,3 +1,4 @@
+import json
 from functools import lru_cache
 
 from pydantic import Field, model_validator
@@ -27,6 +28,22 @@ class Settings(BaseSettings):
         le=24 * 60,
         validation_alias="ACCESS_TOKEN_TTL_MINUTES",
     )
+    cors_origins: str = Field(default="", validation_alias="CORS_ORIGINS")
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        raw = self.cors_origins.strip()
+        if not raw:
+            return []
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                return []
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+            return []
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
     @model_validator(mode="after")
     def validate_production_secret(self) -> "Settings":

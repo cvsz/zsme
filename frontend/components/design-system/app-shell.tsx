@@ -28,6 +28,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useSyncExternalStore, useState } from "react";
 
+import { ApiError, clearAccessToken, getAccessToken, getApiBaseUrl } from "@/lib/api-client";
+import { getCurrentUser, signOut, type CurrentUser } from "@/lib/auth";
+
 type Theme = "dark" | "light";
 const THEME_EVENT = "zsme-theme-change";
 
@@ -85,6 +88,32 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
   const isHydrated = useSyncExternalStore(subscribeToHydration, getClientHydration, getServerHydration);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  useEffect(() => {
+    if (!getApiBaseUrl() || !getAccessToken()) {
+      return undefined;
+    }
+    let isMounted = true;
+    getCurrentUser()
+      .then((user) => {
+        if (isMounted) {
+          setCurrentUser(user);
+        }
+      })
+      .catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 401) {
+          clearAccessToken();
+          if (isMounted) {
+            setCurrentUser(null);
+          }
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -111,6 +140,21 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
     document.documentElement.dataset.theme = nextTheme;
     window.dispatchEvent(new Event(THEME_EVENT));
   };
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+    } catch {
+      // The local session is still cleared by signOut when the API is unavailable.
+    } finally {
+      setCurrentUser(null);
+      setIsSigningOut(false);
+    }
+  };
+
+  const workspaceLabel = currentUser?.organization_id ? "Connected workspace" : "Workspace not connected";
+  const operatorLabel = currentUser?.display_name || "Operator";
 
   return (
     <div className="app-shell">
@@ -188,7 +232,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
           <div className="topbar-context" aria-label="Current workspace context">
             <Building2 size={17} aria-hidden="true" />
             <div>
-              <strong>Workspace not connected</strong>
+              <strong>{workspaceLabel}</strong>
               <span>Fiscal year 2026 · THB</span>
             </div>
             <ChevronDown size={14} aria-hidden="true" />
@@ -214,10 +258,23 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
             >
               {theme === "dark" ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
             </button>
-            <div className="user-chip" aria-label="Current operator">
+            {currentUser ? (
+              <button
+                className="user-chip"
+                type="button"
+                aria-label={`Sign out ${operatorLabel}`}
+                disabled={isSigningOut}
+                onClick={handleSignOut}
+              >
+                <span className="user-avatar" aria-hidden="true">{operatorLabel.slice(0, 2).toUpperCase()}</span>
+                <span>{operatorLabel}</span>
+              </button>
+            ) : (
+              <div className="user-chip" aria-label="Current operator">
               <span className="user-avatar" aria-hidden="true">ZS</span>
               <span>Operator</span>
-            </div>
+              </div>
+            )}
           </div>
         </header>
 

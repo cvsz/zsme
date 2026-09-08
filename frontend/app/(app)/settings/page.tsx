@@ -1,8 +1,67 @@
+"use client";
+
 import { Database, KeyRound, Save, ServerCog, ShieldCheck, UsersRound } from "lucide-react";
+import { type FormEvent, useState, useSyncExternalStore } from "react";
 
 import { StatusBadge } from "@/components/design-system/status-badge";
+import {
+  ApiConfigurationError,
+  checkApiHealth,
+  getApiBaseUrl,
+  getServerApiBaseUrl,
+  isApiBaseUrlManaged,
+  setApiBaseUrl,
+  subscribeToApiBaseUrl,
+} from "@/lib/api-client";
+
+type ConnectionState = "idle" | "managed" | "saved" | "checking" | "connected" | "unavailable" | "invalid";
 
 export default function SettingsPage() {
+  const configuredEndpoint = useSyncExternalStore(
+    subscribeToApiBaseUrl,
+    getApiBaseUrl,
+    getServerApiBaseUrl,
+  );
+  const [draftEndpoint, setDraftEndpoint] = useState<string | undefined>(undefined);
+  const environmentManaged = isApiBaseUrlManaged();
+  const [connectionState, setConnectionState] = useState<ConnectionState>(environmentManaged ? "managed" : "idle");
+  const endpoint = draftEndpoint ?? configuredEndpoint;
+
+  const handleSaveConnection = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (environmentManaged) {
+      setConnectionState("managed");
+      return;
+    }
+    try {
+      setDraftEndpoint(setApiBaseUrl(endpoint));
+      setConnectionState(endpoint.trim() ? "saved" : "idle");
+    } catch (error) {
+      setConnectionState(error instanceof ApiConfigurationError ? "invalid" : "unavailable");
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setConnectionState("checking");
+    try {
+      await checkApiHealth();
+      setConnectionState("connected");
+    } catch {
+      setConnectionState("unavailable");
+    }
+  };
+
+  const connectionLabel = {
+    idle: "Not configured",
+    managed: "Managed by deployment",
+    saved: "Saved locally",
+    checking: "Checking…",
+    connected: "Connected",
+    unavailable: "Unavailable",
+    invalid: "Invalid endpoint",
+  }[connectionState];
+  const connectionTone = connectionState === "connected" ? "success" : connectionState === "invalid" || connectionState === "unavailable" ? "danger" : connectionState === "managed" ? "info" : "warning";
+
   return (
     <div className="page-stack">
       <header className="page-header">
@@ -19,11 +78,11 @@ export default function SettingsPage() {
           <h2 id="connection-settings-title">API connection</h2>
           <p>Secrets belong in managed deployment configuration. They are never stored in the browser UI.</p>
         </div>
-        <div className="form-grid">
+        <form className="form-grid" onSubmit={handleSaveConnection}>
           <div className="field">
             <label htmlFor="api-endpoint">API endpoint</label>
-            <input id="api-endpoint" name="api-endpoint" type="url" placeholder="https://api.example.com" disabled />
-            <small>Use an HTTPS endpoint for production traffic.</small>
+            <input id="api-endpoint" name="api-endpoint" type="url" value={endpoint} onChange={(event) => setDraftEndpoint(event.target.value)} placeholder="https://api.example.com" readOnly={environmentManaged} />
+            <small>{environmentManaged ? "This endpoint is supplied by the deployment environment." : "Use an HTTPS endpoint for production traffic."}</small>
           </div>
           <div className="field">
             <label htmlFor="workspace-slug">Workspace slug</label>
@@ -31,10 +90,11 @@ export default function SettingsPage() {
             <small>Tenant selection is resolved by server-side authorization.</small>
           </div>
           <div className="page-actions">
-            <button className="button button-primary" type="button" disabled><Save size={15} aria-hidden="true" /> Save connection</button>
-            <StatusBadge tone="warning">Not configured</StatusBadge>
+            <button className="button button-primary" type="submit" disabled={environmentManaged}><Save size={15} aria-hidden="true" /> Save connection</button>
+            <button className="button button-secondary" type="button" onClick={handleTestConnection} disabled={!endpoint.trim() || connectionState === "checking"}><ServerCog size={15} aria-hidden="true" /> Test connection</button>
+            <StatusBadge tone={connectionTone}>{connectionLabel}</StatusBadge>
           </div>
-        </div>
+        </form>
       </section>
 
       <div className="panel-grid two-column">

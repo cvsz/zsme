@@ -2,14 +2,41 @@
 
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+import { type FormEvent, useState } from "react";
+
+import { ApiConfigurationError, ApiError } from "@/lib/api-client";
+import { signIn } from "@/lib/auth";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [message, setMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setMessage("Authentication service is not connected in this environment. No credentials were sent.");
+    setMessage("");
+    setIsSubmitting(true);
+    const formData = new FormData(event.currentTarget);
+    try {
+      await signIn({
+        tenant_slug: String(formData.get("tenant_slug") || ""),
+        email: String(formData.get("email") || ""),
+        password: String(formData.get("password") || ""),
+      });
+      router.replace("/dashboard");
+      router.refresh();
+    } catch (error) {
+      if (error instanceof ApiConfigurationError) {
+        setMessage("Authentication service is not connected in this environment. No credentials were sent.");
+      } else if (error instanceof ApiError) {
+        setMessage(error.status === 401 ? "Sign-in failed. Check your workspace and account details." : "Sign-in could not be completed. Try again or contact an administrator.");
+      } else {
+        setMessage("The authentication service could not be reached. No session was created.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -53,11 +80,11 @@ export default function LoginPage() {
               <label htmlFor="password">Password</label>
               <input id="password" name="password" type="password" autoComplete="current-password" placeholder="Enter your password" required />
             </div>
-            {message ? <p className="form-message" role="status">{message}</p> : null}
-            <button className="button button-primary" type="submit">
+            {message ? <p className="form-message" role="status" aria-live="polite">{message}</p> : null}
+            <button className="button button-primary" type="submit" disabled={isSubmitting} aria-busy={isSubmitting}>
               <LockKeyhole size={15} aria-hidden="true" />
-              Sign in
-              <ArrowRight size={15} aria-hidden="true" />
+              {isSubmitting ? "Signing in…" : "Sign in"}
+              {!isSubmitting ? <ArrowRight size={15} aria-hidden="true" /> : null}
             </button>
           </form>
 

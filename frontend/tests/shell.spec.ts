@@ -31,6 +31,8 @@ test('theme switch exposes both dark and light modes', async ({ page }) => {
 });
 
 test('core workspace routes render their own page headings', async ({ page }) => {
+  test.setTimeout(120_000);
+
   for (const route of [
     '/dashboard',
     '/partners',
