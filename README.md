@@ -2,7 +2,7 @@
 
 **ZSME** is an open-source, Thailand-first SME accounting and business finance platform.
 
-The project is designed as an independent implementation inspired by modern accounting workflows (not a copy of any third-party product or source code), with a focus on simple bookkeeping, auditability, and automation for Thai SMEs.
+The project is designed as an independent implementation inspired by modern accounting workflows (not a copy of any third-party product or source code), with a focus on simple bookkeeping, auditability, automation, and international-ready operation for SMEs.
 
 ## Product goals
 
@@ -14,8 +14,18 @@ The project is designed as an independent implementation inspired by modern acco
 - Thailand-ready tax primitives: VAT configuration, tax invoices, withholding-tax records, and tax reports
 - Core financial reporting: Balance Sheet, Profit & Loss, General Ledger, Trial Balance, Cash Flow, Aged Receivable, Aged Payable, and Audit Trail
 - Multi-company / multi-tenant architecture with RBAC
+- Five first-class UI locales: Thai (`th`), English (`en`), Simplified Chinese (`zh-CN`), Japanese (`ja`), and Vietnamese (`vi`)
+- Thailand-first default locale with English translation fallback
 - API-first design and exportable accounting data
 - Self-hostable deployment using PostgreSQL and containers
+
+## Internationalization
+
+ZSME keeps accounting values language-neutral and localizes presentation separately. Locale changes must not alter persisted monetary values, account codes, document numbers, posting states, tax codes, or journal behavior.
+
+The backend locale registry is authoritative for supported locale IDs and common regional aliases. Clients can query `GET /v1/i18n/locales` to discover the supported set.
+
+Formatting for dates, times, numbers, currencies, percentages, PDFs, emails, and report labels should follow the active user or tenant locale while database/API values remain canonical.
 
 ## Target stack
 
@@ -34,7 +44,7 @@ The project is designed as an independent implementation inspired by modern acco
 4. **Payments & Reconciliation** — bank transactions, matching, partial/full reconciliation
 5. **Thailand Tax** — VAT and withholding-tax workflow primitives and reports
 6. **Financial Reports** — GL, TB, P&L, BS, cash flow, aged AR/AP, audit trail
-7. **Automation** — imports, rules, OCR integration hooks, scheduled workflows
+7. **Automation & i18n UX** — imports, rules, OCR integration hooks, scheduled workflows, locale-aware UI and documents
 8. **Production Hardening** — RBAC, tenant isolation, observability, backup/restore, security controls
 
 ## Accounting invariants

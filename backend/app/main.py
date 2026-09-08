@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.domain.ledger import JournalEntry, JournalLine
+from app.i18n import DEFAULT_LOCALE, FALLBACK_LOCALE, SUPPORTED_LOCALES
 
 app = FastAPI(
     title="ZSME Accounting API",
@@ -12,6 +13,15 @@ app = FastAPI(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "zsme-api"}
+
+
+@app.get("/v1/i18n/locales")
+def locales() -> dict[str, object]:
+    return {
+        "default": DEFAULT_LOCALE,
+        "fallback": FALLBACK_LOCALE,
+        "supported": list(SUPPORTED_LOCALES),
+    }
 
 
 @app.post("/v1/accounting/validate-entry")
