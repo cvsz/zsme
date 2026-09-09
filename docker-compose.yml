@@ -3,7 +3,7 @@ services:
     build:
       context: ./backend
     ports:
-      - "${ZSME_API_PORT:-8000}:8000"
+      - "${ZSME_API_PORT:-18081}:8000"
     env_file:
       - ./backend/.env.compose
     environment:

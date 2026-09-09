@@ -31,7 +31,7 @@ docker compose --env-file backend/.env.compose stop api
 docker compose --env-file backend/.env.compose exec -T db pg_restore --clean --if-exists --no-owner --dbname="${POSTGRES_DB:-zsme}" < "$BACKUP_FILE"
 docker compose --env-file backend/.env.compose run --rm api alembic upgrade head
 docker compose --env-file backend/.env.compose up -d api
-curl --fail-with-body http://127.0.0.1:8000/ready
+curl --fail-with-body http://127.0.0.1:18081/ready
 ```
 
 Validate row counts, tenant boundaries, journal balances, audit events, and application smoke flows against an independent checklist. Do not use a restored database for customer traffic until validation is signed off.

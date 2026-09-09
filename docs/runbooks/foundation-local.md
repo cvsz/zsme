@@ -7,7 +7,7 @@ This runbook starts the foundation slice locally and records evidence without pr
 - Docker Engine with the Compose plugin
 - Python 3.12 or newer for API-only checks
 - Node 22 or newer and npm for frontend checks
-- `curl`, `openssl`, and an available host port 8000
+- `curl`, `openssl`, and an available host port 18081
 
 ## Configure a local boundary
 
@@ -28,8 +28,8 @@ docker compose --env-file backend/.env.compose up --build -d db
 docker compose --env-file backend/.env.compose run --rm api alembic upgrade head
 docker compose --env-file backend/.env.compose up --build -d api
 docker compose --env-file backend/.env.compose ps
-curl --fail-with-body http://127.0.0.1:8000/health
-curl --fail-with-body http://127.0.0.1:8000/ready
+curl --fail-with-body http://127.0.0.1:18081/health
+curl --fail-with-body http://127.0.0.1:18081/ready
 ```
 
 `/health` is liveness. `/ready` is dependency readiness and returns a failure response when the database cannot be reached. A successful local response is local evidence only.
