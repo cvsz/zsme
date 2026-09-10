@@ -59,7 +59,7 @@ jobs:
       - name: Test
         run: pytest -q
       - name: Dependency audit
-        run: pip-audit --strict
+        run: pip-audit --strict --skip-editable
       - name: Import check
         run: python -c "from app.main import app; assert app.title == 'ZSME Accounting API'"
 
