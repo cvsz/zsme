@@ -63,6 +63,31 @@ export type GeneralLedgerReport = {
   total_credit: string;
 };
 
+export type CashFlowRow = {
+  account_code: string;
+  account_name: string | null;
+  opening_balance: string;
+  inflow: string;
+  outflow: string;
+  net_change: string;
+  closing_balance: string;
+};
+
+export type CashFlowReport = {
+  from_date: string;
+  to_date: string;
+  method: "direct_cash_account_movement";
+  currency_code: string;
+  configuration_status: "ready" | "configuration_required";
+  mapped_account_count: number;
+  rows: CashFlowRow[];
+  opening_cash: string;
+  total_inflow: string;
+  total_outflow: string;
+  net_change: string;
+  closing_cash: string;
+};
+
 export type AgedBucket = "current" | "1_30" | "31_60" | "61_90" | "over_90";
 
 export type AgedDocumentRow = {
@@ -117,6 +142,15 @@ export function getGeneralLedger(
 ): Promise<GeneralLedgerReport> {
   const query = new URLSearchParams({ from_date: fromDate, to_date: toDate });
   return apiRequest<GeneralLedgerReport>(`/v1/reports/general-ledger?${query.toString()}`, { signal });
+}
+
+export function getCashFlow(
+  fromDate: string,
+  toDate: string,
+  signal?: AbortSignal,
+): Promise<CashFlowReport> {
+  const query = new URLSearchParams({ from_date: fromDate, to_date: toDate });
+  return apiRequest<CashFlowReport>(`/v1/reports/cash-flow?${query.toString()}`, { signal });
 }
 
 export function getAgedReceivable(asOf: string, signal?: AbortSignal): Promise<AgedReport> {

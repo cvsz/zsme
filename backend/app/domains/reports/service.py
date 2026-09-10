@@ -4,15 +4,17 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.db.models import (
+    BankAccount,
     ChartAccount,
     FinancialDocument,
     JournalEntryRecord,
     JournalLineRecord,
+    Organization,
     PaymentAllocation,
     PaymentRecord,
 )
@@ -22,6 +24,8 @@ from app.domains.reports.schemas import (
     AgedDocumentRow,
     AgedReport,
     BalanceSheetReport,
+    CashFlowReport,
+    CashFlowRow,
     GeneralLedgerReport,
     GeneralLedgerRow,
     ProfitLossReport,
@@ -289,6 +293,155 @@ def general_ledger(
     )
 
 
+def cash_flow(
+    db: Session,
+    principal: Principal,
+    from_date: date,
+    to_date: date,
+) -> CashFlowReport:
+    """Return direct cash-account movement from the posted ledger.
+
+    Cash accounts are explicit bank-account mappings, rather than inferred
+    from account-code conventions.  This keeps the report auditable while the
+    chart of accounts does not yet model operating, investing, or financing
+    classifications.
+    """
+    if principal.organization_id is None:
+        raise ReportDomainError("an organization is required for reporting")
+    if from_date > to_date:
+        raise ReportDomainError("from_date must be on or before to_date")
+
+    organization_currency = db.scalar(
+        select(Organization.default_currency).where(
+            Organization.id == principal.organization_id,
+            Organization.tenant_id == principal.tenant_id,
+        )
+    )
+    if organization_currency is None:
+        raise ReportDomainError("organization not found")
+    currency_code = organization_currency.upper()
+    active_bank_accounts = list(
+        db.execute(
+            select(BankAccount.ledger_account_code, BankAccount.currency_code).where(
+                BankAccount.tenant_id == principal.tenant_id,
+                BankAccount.organization_id == principal.organization_id,
+                BankAccount.is_active.is_(True),
+            )
+        ).all()
+    )
+    configured_currencies = {
+        str(account_currency).upper() for _, account_currency in active_bank_accounts
+    }
+    if configured_currencies - {currency_code}:
+        raise ReportDomainError(
+            f"cash flow requires active bank accounts to use organization currency {currency_code}"
+        )
+    configured_cash_codes = {
+        str(account_code).strip().upper() for account_code, _ in active_bank_accounts
+    }
+    period = and_(
+        JournalEntryRecord.journal_date >= from_date,
+        JournalEntryRecord.journal_date <= to_date,
+    )
+    opening = JournalEntryRecord.journal_date < from_date
+    values = _bounded_rows(
+        list(
+            db.execute(
+                select(
+                    JournalLineRecord.account_code,
+                    ChartAccount.name,
+                    func.coalesce(
+                        func.sum(case((opening, JournalLineRecord.debit), else_=Decimal("0.00"))),
+                        Decimal("0.00"),
+                    ).label("opening_debit"),
+                    func.coalesce(
+                        func.sum(case((opening, JournalLineRecord.credit), else_=Decimal("0.00"))),
+                        Decimal("0.00"),
+                    ).label("opening_credit"),
+                    func.coalesce(
+                        func.sum(case((period, JournalLineRecord.debit), else_=Decimal("0.00"))),
+                        Decimal("0.00"),
+                    ).label("period_debit"),
+                    func.coalesce(
+                        func.sum(case((period, JournalLineRecord.credit), else_=Decimal("0.00"))),
+                        Decimal("0.00"),
+                    ).label("period_credit"),
+                )
+                .join(
+                    JournalEntryRecord,
+                    and_(
+                        JournalEntryRecord.id == JournalLineRecord.entry_id,
+                        JournalEntryRecord.tenant_id == principal.tenant_id,
+                        JournalEntryRecord.organization_id == principal.organization_id,
+                    ),
+                )
+                .outerjoin(
+                    ChartAccount,
+                    and_(
+                        ChartAccount.id == JournalLineRecord.account_id,
+                        ChartAccount.tenant_id == principal.tenant_id,
+                        ChartAccount.organization_id == principal.organization_id,
+                    ),
+                )
+                .where(
+                    JournalLineRecord.tenant_id == principal.tenant_id,
+                    JournalLineRecord.organization_id == principal.organization_id,
+                    JournalEntryRecord.status == "posted",
+                    JournalLineRecord.account_code.in_(configured_cash_codes),
+                )
+                .group_by(JournalLineRecord.account_code, ChartAccount.name)
+                .order_by(JournalLineRecord.account_code)
+                .limit(MAX_REPORT_ROWS + 1)
+            ).all()
+        ),
+        "cash flow",
+    )
+
+    rows: list[CashFlowRow] = []
+    for (
+        account_code,
+        account_name,
+        opening_debit,
+        opening_credit,
+        period_debit,
+        period_credit,
+    ) in values:
+        opening_balance = _money(opening_debit - opening_credit)
+        inflow = _money(period_debit)
+        outflow = _money(period_credit)
+        net_change = _money(inflow - outflow)
+        rows.append(
+            CashFlowRow(
+                account_code=account_code,
+                account_name=account_name,
+                opening_balance=opening_balance,
+                inflow=inflow,
+                outflow=outflow,
+                net_change=net_change,
+                closing_balance=_money(opening_balance + net_change),
+            )
+        )
+
+    opening_cash = _money(sum((row.opening_balance for row in rows), Decimal("0.00")))
+    total_inflow = _money(sum((row.inflow for row in rows), Decimal("0.00")))
+    total_outflow = _money(sum((row.outflow for row in rows), Decimal("0.00")))
+    net_change = _money(total_inflow - total_outflow)
+    return CashFlowReport(
+        from_date=from_date,
+        to_date=to_date,
+        method="direct_cash_account_movement",
+        currency_code=currency_code,
+        configuration_status=("ready" if active_bank_accounts else "configuration_required"),
+        mapped_account_count=len(active_bank_accounts),
+        rows=rows,
+        opening_cash=opening_cash,
+        total_inflow=total_inflow,
+        total_outflow=total_outflow,
+        net_change=net_change,
+        closing_cash=_money(opening_cash + net_change),
+    )
+
+
 def aged_report(
     db: Session,
     principal: Principal,
@@ -403,6 +556,7 @@ __all__ = [
     "ReportDomainError",
     "aged_report",
     "balance_sheet",
+    "cash_flow",
     "general_ledger",
     "profit_loss",
     "trial_balance",

@@ -53,6 +53,21 @@ const generalLedger = {
   total_credit: '1070.00',
 };
 
+const cashFlow = {
+  from_date: '2026-01-01',
+  to_date: '2026-12-31',
+  method: 'direct_cash_account_movement',
+  currency_code: 'THB',
+  configuration_status: 'ready',
+  mapped_account_count: 1,
+  rows: [{ account_code: '1001', account_name: 'Operating bank', opening_balance: '500.00', inflow: '100.00', outflow: '40.00', net_change: '60.00', closing_balance: '560.00' }],
+  opening_cash: '500.00',
+  total_inflow: '100.00',
+  total_outflow: '40.00',
+  net_change: '60.00',
+  closing_cash: '560.00',
+};
+
 const aged = {
   as_of: '2026-12-31',
   document_type: 'sales_invoice',
@@ -125,6 +140,26 @@ test('profit and loss loads its dedicated server-derived contract', async ({ pag
   expect(requestedUrl).toContain('to_date=2026-12-31');
 });
 
+test('cash flow loads direct cash-account movement with date scope and totals', async ({ page }) => {
+  test.setTimeout(90_000);
+  await configureConnectedWorkspace(page);
+  let requestedUrl = '';
+  await page.route('**/v1/reports/cash-flow**', async (route) => {
+    requestedUrl = route.request().url();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(cashFlow) });
+  });
+
+  await page.goto('/reports/cash-flow');
+
+  await expect(page.getByRole('heading', { name: 'Cash flow', exact: true })).toBeVisible();
+  await expect.poll(() => requestedUrl, { timeout: 30_000 }).toContain('/v1/reports/cash-flow?');
+  await expect(page.getByText('Operating bank', { exact: true })).toBeVisible();
+  await expect(page.getByText('THB 560.00', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Direct movement', { exact: true }).first()).toBeVisible();
+  expect(requestedUrl).toContain('from_date=2026-01-01');
+  expect(requestedUrl).toContain('to_date=2026-12-31');
+});
+
 test('balance sheet, general ledger and ageing pages use dedicated contracts', async ({ page }) => {
   test.setTimeout(90_000);
   await configureConnectedWorkspace(page);
@@ -136,6 +171,8 @@ test('balance sheet, general ledger and ageing pages use dedicated contracts', a
       ? balanceSheet
       : url.pathname.endsWith('/general-ledger')
         ? generalLedger
+        : url.pathname.endsWith('/cash-flow')
+          ? cashFlow
         : { ...aged, document_type: url.pathname.endsWith('/aged-payable') ? 'vendor_bill' : 'sales_invoice' };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -149,6 +186,9 @@ test('balance sheet, general ledger and ageing pages use dedicated contracts', a
 
   await page.goto('/reports/general-ledger');
   await expect(page.getByText('REPORT-001', { exact: true })).toBeVisible();
+
+  await page.goto('/reports/cash-flow');
+  await expect(page.getByText('Operating bank', { exact: true })).toBeVisible();
 
   await page.goto('/reports/aged-receivable');
   await expect(page.getByText('INV-001', { exact: true })).toBeVisible();

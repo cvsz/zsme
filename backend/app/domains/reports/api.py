@@ -9,6 +9,7 @@ from app.api.dependencies import ReportsReadDep, SessionDep
 from app.domains.reports.schemas import (
     AgedReport,
     BalanceSheetReport,
+    CashFlowReport,
     GeneralLedgerReport,
     ProfitLossReport,
     TrialBalanceReport,
@@ -17,6 +18,7 @@ from app.domains.reports.service import (
     ReportDomainError,
     aged_report,
     balance_sheet,
+    cash_flow,
     general_ledger,
     profit_loss,
     trial_balance,
@@ -72,6 +74,19 @@ def get_general_ledger(
 ) -> GeneralLedgerReport:
     try:
         return general_ledger(db, principal, from_date, to_date)
+    except ReportDomainError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/cash-flow", response_model=CashFlowReport)
+def get_cash_flow(
+    principal: ReportsReadDep,
+    db: SessionDep,
+    from_date: date,
+    to_date: date,
+) -> CashFlowReport:
+    try:
+        return cash_flow(db, principal, from_date, to_date)
     except ReportDomainError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
 

@@ -73,6 +73,31 @@ class GeneralLedgerReport(BaseModel):
     total_credit: Decimal
 
 
+class CashFlowRow(BaseModel):
+    account_code: str
+    account_name: str | None
+    opening_balance: Decimal
+    inflow: Decimal
+    outflow: Decimal
+    net_change: Decimal
+    closing_balance: Decimal
+
+
+class CashFlowReport(BaseModel):
+    from_date: date
+    to_date: date
+    method: Literal["direct_cash_account_movement"]
+    currency_code: str
+    configuration_status: Literal["ready", "configuration_required"]
+    mapped_account_count: int
+    rows: list[CashFlowRow]
+    opening_cash: Decimal
+    total_inflow: Decimal
+    total_outflow: Decimal
+    net_change: Decimal
+    closing_cash: Decimal
+
+
 AgedBucket = Literal["current", "1_30", "31_60", "61_90", "over_90"]
 
 
@@ -104,6 +129,8 @@ __all__ = [
     "AgedDocumentRow",
     "AgedReport",
     "BalanceSheetReport",
+    "CashFlowReport",
+    "CashFlowRow",
     "GeneralLedgerReport",
     "GeneralLedgerRow",
     "ProfitLossReport",

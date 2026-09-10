@@ -51,7 +51,7 @@ The foundation and accounting vertical slice is implemented and locally validate
 authentication, tenant-scoped organizations, chart of accounts, fiscal periods, journals,
 AR/AP documents, payments, bank reconciliation, tax rules, audit events, and core reports.
 The repository is not yet a complete ERP release: catalog/inventory, manufacturing, assets,
-payroll, POS, cash-flow reporting, background automation/provider adapters, statutory
+payroll, POS, classified cash-flow reporting, background automation/provider adapters, statutory
 submission, backup/restore operations, and production deployment remain explicit follow-up
 scopes.
 
