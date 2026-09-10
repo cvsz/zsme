@@ -4,7 +4,6 @@ import {
   BookOpen,
   Building2,
   Check,
-  ChevronDown,
   CircleHelp,
   FileText,
   ReceiptText,
@@ -27,10 +26,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useSyncExternalStore, useState } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore, useState } from "react";
 
-import { ApiError, clearAccessToken, getAccessToken, getApiBaseUrl } from "@/lib/api-client";
+import { ApiError, clearAccessToken, getAccessToken, getApiBaseUrl, getServerApiBaseUrl, subscribeToApiBaseUrl } from "@/lib/api-client";
 import { getCurrentUser, signOut, type CurrentUser } from "@/lib/auth";
+import {
+  WorkspaceAccessProvider,
+  WorkspacePermissionBanner,
+  type WorkspaceAccess,
+  type WorkspaceUserState,
+} from "./workspace-context";
 
 type Theme = "dark" | "light";
 const THEME_EVENT = "zsme-theme-change";
@@ -80,6 +85,33 @@ const navigation = [
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
+const mobileNavigation = [
+  navigation[0],
+  navigation[3],
+  navigation[10],
+  navigation[6],
+  navigation[12],
+] as const;
+
+const pageTitles: Array<{ match: (pathname: string) => boolean; title: string }> = [
+  { match: (pathname) => pathname === "/dashboard", title: "Business control center" },
+  { match: (pathname) => pathname === "/partners", title: "Customers & vendors" },
+  { match: (pathname) => pathname === "/accounting", title: "Accounting workspace" },
+  { match: (pathname) => pathname === "/accounting/chart-of-accounts", title: "Chart of accounts" },
+  { match: (pathname) => pathname === "/accounting/periods", title: "Fiscal periods" },
+  { match: (pathname) => pathname === "/accounting/reconciliation", title: "Reconciliation workspace" },
+  { match: (pathname) => pathname === "/sales", title: "Sales & billing" },
+  { match: (pathname) => pathname === "/invoices", title: "Sales invoices" },
+  { match: (pathname) => pathname === "/bills", title: "Vendor bills" },
+  { match: (pathname) => pathname === "/reports" || pathname.startsWith("/reports/"), title: "Reports & insights" },
+  { match: (pathname) => pathname === "/tax", title: "Tax configuration" },
+  { match: (pathname) => pathname === "/receipts", title: "Customer receipts" },
+  { match: (pathname) => pathname === "/disbursements", title: "Vendor disbursements" },
+  { match: (pathname) => pathname === "/banking", title: "Banking & reconciliation" },
+  { match: (pathname) => pathname === "/audit", title: "Audit & activity" },
+  { match: (pathname) => pathname === "/settings", title: "Workspace settings" },
+];
+
 function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -87,15 +119,28 @@ function isActivePath(pathname: string, href: string) {
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
   const router = useRouter();
+  const configuredEndpoint = useSyncExternalStore(
+    subscribeToApiBaseUrl,
+    getApiBaseUrl,
+    getServerApiBaseUrl,
+  );
   const theme = useSyncExternalStore(subscribeToTheme, readTheme, getServerTheme);
   const isHydrated = useSyncExternalStore(subscribeToHydration, getClientHydration, getServerHydration);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [userState, setUserState] = useState<WorkspaceUserState>("disconnected");
+  const [loadedEndpoint, setLoadedEndpoint] = useState("");
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const closeNavRef = useRef<HTMLButtonElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const closeSearchRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!getApiBaseUrl() || !getAccessToken()) {
+    if (!configuredEndpoint || !getAccessToken()) {
       return undefined;
     }
     let isMounted = true;
@@ -103,6 +148,8 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
       .then((user) => {
         if (isMounted) {
           setCurrentUser(user);
+          setUserState("ready");
+          setLoadedEndpoint(configuredEndpoint);
         }
       })
       .catch((error: unknown) => {
@@ -110,18 +157,69 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
           clearAccessToken();
           if (isMounted) {
             setCurrentUser(null);
+            setUserState("error");
+            setLoadedEndpoint(configuredEndpoint);
             router.replace("/login");
           }
+        } else if (isMounted) {
+          setCurrentUser(null);
+          setUserState("error");
+          setLoadedEndpoint(configuredEndpoint);
         }
       });
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [configuredEndpoint, router]);
+
+  useEffect(() => {
+    const pageTitle = pageTitles.find(({ match }) => match(pathname))?.title;
+    if (pageTitle) {
+      document.title = `${pageTitle} | ZSME Enterprise`;
+    }
+  }, [pathname]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    if (!isNavOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsNavOpen(false);
+        window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const focusable = sidebarRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+      );
+      if (!focusable?.length) {
+        event.preventDefault();
+        closeNavRef.current?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    closeNavRef.current?.focus();
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isNavOpen]);
 
   useEffect(() => {
     if (!isSearchOpen) {
@@ -131,12 +229,47 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsSearchOpen(false);
+        window.requestAnimationFrame(() => searchTriggerRef.current?.focus());
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const focusable = [searchInputRef.current, closeSearchRef.current].filter(
+        (element): element is HTMLInputElement | HTMLButtonElement => Boolean(element && !element.disabled),
+      );
+      if (!focusable.length) {
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) {
+        return;
+      }
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
 
+    window.requestAnimationFrame(() => (searchInputRef.current?.disabled ? closeSearchRef.current : searchInputRef.current)?.focus());
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSearchOpen]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
 
   const toggleTheme = () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
@@ -153,18 +286,41 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
       // The local session is still cleared by signOut when the API is unavailable.
     } finally {
       setCurrentUser(null);
+      setUserState("disconnected");
+      setLoadedEndpoint("");
       setIsSigningOut(false);
       router.replace("/login");
       router.refresh();
     }
   };
 
-  const workspaceLabel = currentUser?.organization_id ? "Connected workspace" : "Workspace not connected";
-  const operatorLabel = currentUser?.display_name || "Operator";
+  const hasConfiguredSession = Boolean(configuredEndpoint && getAccessToken());
+  const sessionLoaded = hasConfiguredSession && loadedEndpoint === configuredEndpoint;
+  const effectiveUser = sessionLoaded ? currentUser : null;
+  const effectiveUserState: WorkspaceUserState = !hasConfiguredSession
+    ? "disconnected"
+    : sessionLoaded
+      ? userState
+      : "loading";
+
+  const accessValue = useMemo<WorkspaceAccess>(
+    () => ({
+      currentUser: effectiveUser,
+      userState: effectiveUserState,
+      hasPermission: (permission) => Boolean(
+        effectiveUser && (effectiveUser.permissions.includes(permission) || effectiveUser.permissions.includes("*")),
+      ),
+    }),
+    [effectiveUser, effectiveUserState],
+  );
+
+  const workspaceLabel = effectiveUser?.organization_id ? "Connected workspace" : "Workspace not connected";
+  const operatorLabel = effectiveUser?.display_name || "Operator";
 
   return (
-    <div className="app-shell">
-      <aside className={`app-sidebar${isNavOpen ? " is-open" : ""}`}>
+    <WorkspaceAccessProvider value={accessValue}>
+      <div className="app-shell">
+      <aside ref={sidebarRef} className={`app-sidebar${isNavOpen ? " is-open" : ""}`} aria-label="Workspace navigation">
         <div className="sidebar-brand">
           <Link className="login-brand" href="/dashboard" aria-label="ZSME dashboard">
             <span className="brand-mark">ZS</span>
@@ -174,6 +330,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
             </span>
           </Link>
           <button
+            ref={closeNavRef}
             className="sidebar-close"
             type="button"
             aria-label="Close navigation"
@@ -184,7 +341,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
         </div>
 
         <div className="sidebar-section-label">Workspace</div>
-        <nav className="primary-nav" aria-label="Primary navigation">
+        <nav id="primary-navigation" className="primary-nav" aria-label="Primary navigation">
           {navigation.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
@@ -226,6 +383,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
       <div className="app-main">
         <header className="topbar">
           <button
+            ref={menuButtonRef}
             className="mobile-menu-button"
             type="button"
             aria-label="Open navigation"
@@ -241,14 +399,16 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
               <strong>{workspaceLabel}</strong>
               <span>Fiscal year 2026 · THB</span>
             </div>
-            <ChevronDown size={14} aria-hidden="true" />
           </div>
 
           <div className="topbar-actions">
             <button
+              ref={searchTriggerRef}
               className="search-trigger"
               type="button"
               aria-label="Open search"
+              aria-controls="search-dialog"
+              aria-expanded={isSearchOpen}
               onClick={() => setIsSearchOpen(true)}
             >
               <Search size={16} aria-hidden="true" />
@@ -264,7 +424,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
             >
               {theme === "dark" ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
             </button>
-            {currentUser ? (
+            {effectiveUser ? (
               <button
                 className="user-chip"
                 type="button"
@@ -285,35 +445,69 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
         </header>
 
         <main id="main-content" className="page-content">
+          <WorkspacePermissionBanner pathname={pathname} />
           {children}
         </main>
       </div>
 
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        {mobileNavigation.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            className="mobile-bottom-nav-link"
+            href={href}
+            aria-current={isActivePath(pathname, href) ? "page" : undefined}
+            onClick={() => setIsNavOpen(false)}
+          >
+            <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
+            <span>{label}</span>
+          </Link>
+        ))}
+      </nav>
+
       {isSearchOpen ? (
-        <div className="search-backdrop" role="presentation" onMouseDown={() => setIsSearchOpen(false)}>
+        <div
+          className="search-backdrop"
+          onMouseDown={() => {
+            setIsSearchOpen(false);
+            window.requestAnimationFrame(() => searchTriggerRef.current?.focus());
+          }}
+        >
           <section
+            id="search-dialog"
             className="search-dialog"
             role="dialog"
             aria-modal="true"
             aria-labelledby="search-dialog-title"
+            aria-describedby="search-dialog-description"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <h2 id="search-dialog-title" className="visually-hidden">Search workspace</h2>
             <div className="search-dialog-header">
               <Search size={18} aria-hidden="true" />
-              <input autoFocus type="search" placeholder="Search transactions, customers or settings" />
-              <button className="icon-button" type="button" aria-label="Close search" onClick={() => setIsSearchOpen(false)}>
+              <input ref={searchInputRef} type="search" aria-label="Search workspace" placeholder="Global search is not available yet" disabled />
+              <button
+                ref={closeSearchRef}
+                className="icon-button"
+                type="button"
+                aria-label="Close search"
+                onClick={() => {
+                  setIsSearchOpen(false);
+                  window.requestAnimationFrame(() => searchTriggerRef.current?.focus());
+                }}
+              >
                 <X size={17} aria-hidden="true" />
               </button>
             </div>
-            <div className="search-dialog-body">
-              <strong>Search will be available when the API is connected.</strong>
-              <span>Results will respect tenant boundaries and your assigned permissions.</span>
+            <div id="search-dialog-description" className="search-dialog-body">
+              <strong>{configuredEndpoint ? "Global search is not enabled in this release." : "Search is available after the API connects."}</strong>
+              <span>When enabled, results will respect tenant boundaries and your assigned permissions.</span>
               <span><Check size={14} aria-hidden="true" /> Press Escape to close.</span>
             </div>
           </section>
         </div>
       ) : null}
-    </div>
+      </div>
+    </WorkspaceAccessProvider>
   );
 }

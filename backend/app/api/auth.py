@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -9,7 +9,14 @@ from sqlalchemy import func, select
 from app.api.dependencies import PrincipalDep, SessionDep
 from app.core.auth import create_session, revoke_session
 from app.core.config import get_settings
-from app.core.security import verify_password
+from app.core.login_throttle import (
+    LoginRateLimitError,
+    check_login_throttle,
+    login_bucket_keys,
+    record_login_failure,
+    record_login_success,
+)
+from app.core.security import dummy_password_hash, verify_password
 from app.db.models import Tenant, User
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -38,24 +45,46 @@ class MeResponse(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: SessionDep) -> LoginResponse:
+def login(payload: LoginRequest, request: Request, db: SessionDep) -> LoginResponse:
     normalized_email = payload.email.strip().lower()
+    bucket_keys = login_bucket_keys(request, payload.tenant_slug, normalized_email)
+    try:
+        check_login_throttle(db, bucket_keys)
+    except LoginRateLimitError as error:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(error),
+            headers={"Retry-After": str(error.retry_after)},
+        ) from error
     user = db.scalar(
         select(User)
         .join(Tenant, User.tenant_id == Tenant.id)
         .where(Tenant.slug == payload.tenant_slug.strip().lower())
+        .where(Tenant.status == "active")
         .where(func.lower(User.email) == normalized_email)
         .where(User.is_active.is_(True))
     )
-    if user is None or not verify_password(payload.password, user.password_hash):
+    password_hash = user.password_hash if user is not None else dummy_password_hash()
+    if not verify_password(payload.password, password_hash):
+        retry_after = record_login_failure(db, bucket_keys)
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="too many login attempts",
+                headers={"Retry-After": str(retry_after)},
+            )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
 
+    record_login_success(db, bucket_keys)
     access_token = create_session(db, user)
-    return LoginResponse(
+    response = LoginResponse(
         access_token=access_token,
         token_type="bearer",
         expires_in=get_settings().access_token_ttl_minutes * 60,
     )
+    request.state.tenant_id = str(user.tenant_id)
+    request.state.user_id = str(user.id)
+    return response
 
 
 @router.get("/me", response_model=MeResponse)

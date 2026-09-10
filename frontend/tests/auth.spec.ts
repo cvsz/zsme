@@ -20,7 +20,7 @@ test('login does not submit credentials when the API endpoint is missing', async
 
 test('configured login exchanges credentials and establishes a session', async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem('zsme-api-base-url', 'http://api.test');
+    window.localStorage.setItem('zsme-api-base-url', 'http://127.0.0.1:8000');
   });
   await page.route('**/v1/auth/login', async (route) => {
     await route.fulfill({

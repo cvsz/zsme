@@ -10,11 +10,11 @@ test('settings can save and verify a browser API endpoint without storing secret
   });
 
   await page.goto('/settings');
-  await page.getByLabel('API endpoint').fill('http://api.test');
+  await page.getByLabel('API endpoint').fill('http://127.0.0.1:8000');
   await page.getByRole('button', { name: 'Save connection' }).click();
   await expect(page.getByText('Saved locally')).toBeVisible();
   await page.getByRole('button', { name: 'Test connection' }).click();
   await expect(page.getByText('Connected', { exact: true })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('zsme-api-base-url'))).toBe('http://api.test');
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('zsme-api-base-url'))).toBe('http://127.0.0.1:8000');
   expect(await page.evaluate(() => window.localStorage.getItem('password'))).toBeNull();
 });

@@ -6,6 +6,7 @@ from app.db.models.payments import PaymentAllocation, PaymentRecord
 from app.db.models.platform import (
     AuditEvent,
     IdempotencyRecord,
+    LoginThrottle,
     Organization,
     Role,
     SessionToken,
@@ -26,6 +27,7 @@ __all__ = [
     "FinancialDocument",
     "FinancialDocumentLine",
     "IdempotencyRecord",
+    "LoginThrottle",
     "JournalEntryRecord",
     "JournalLineRecord",
     "Organization",

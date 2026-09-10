@@ -26,6 +26,7 @@ class Principal:
     display_name: str
     roles: frozenset[str]
     permissions: frozenset[str]
+    correlation_id: str = ""
 
 
 def _token_hash(token: str) -> str:
@@ -73,22 +74,40 @@ def get_current_principal(
     expires_at = session.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
-    if expires_at <= now or not session.user.is_active:
+    user = session.user
+    if (
+        expires_at <= now
+        or not user.is_active
+        or session.tenant_id != user.tenant_id
+        or user.tenant.status != "active"
+        or (user.organization_id is not None and user.organization is None)
+        or (
+            user.organization is not None
+            and user.organization.tenant_id != user.tenant_id
+        )
+    ):
         raise _unauthorized()
 
-    roles = frozenset(role.name for role in session.user.roles)
+    correlation_id = getattr(request.state, "correlation_id", "")
+    request.state.tenant_id = str(session.tenant_id)
+    request.state.user_id = str(user.id)
+    roles = frozenset(role.name for role in user.roles if role.tenant_id == session.tenant_id)
     permissions = frozenset(
-        permission for role in session.user.roles for permission in (role.permissions or [])
+        permission
+        for role in user.roles
+        if role.tenant_id == session.tenant_id
+        for permission in (role.permissions or [])
     )
     return Principal(
         session_id=session.id,
-        user_id=session.user.id,
+        user_id=user.id,
         tenant_id=session.tenant_id,
-        organization_id=session.user.organization_id,
-        email=session.user.email,
-        display_name=session.user.display_name,
+        organization_id=user.organization_id,
+        email=user.email,
+        display_name=user.display_name,
         roles=roles,
         permissions=permissions,
+        correlation_id=correlation_id,
     )
 
 
@@ -96,7 +115,13 @@ PrincipalDependency = Annotated[Principal, Depends(get_current_principal)]
 
 
 def revoke_session(db: Session, principal: Principal) -> None:
-    session = db.get(SessionToken, principal.session_id)
+    session = db.scalar(
+        select(SessionToken).where(
+            SessionToken.id == principal.session_id,
+            SessionToken.tenant_id == principal.tenant_id,
+            SessionToken.user_id == principal.user_id,
+        )
+    )
     if session is not None and session.revoked_at is None:
         session.revoked_at = datetime.now(UTC)
         db.flush()

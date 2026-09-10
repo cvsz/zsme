@@ -102,9 +102,10 @@ class PaymentAllocation(IdentifiedTimestampMixin, OrganizationScopeMixin, Base):
 
 def _status_was_posted(target: PaymentRecord) -> bool:
     history = sqlalchemy_inspect(target).attrs.status.history
-    return target.status == "posted" and not (
-        history.has_changes() and history.deleted and history.deleted[0] != "posted"
+    previous_status = history.deleted[0] if history.deleted else (
+        history.unchanged[0] if history.unchanged else None
     )
+    return previous_status == "posted"
 
 
 @event.listens_for(PaymentRecord, "before_update")
@@ -115,7 +116,7 @@ def prevent_posted_payment_mutation(_mapper, _connection, target: PaymentRecord)
 
 @event.listens_for(PaymentRecord, "before_delete")
 def prevent_posted_payment_delete(_mapper, _connection, target: PaymentRecord) -> None:
-    if target.status == "posted":
+    if _status_was_posted(target):
         raise ValueError("posted payments are immutable")
 
 

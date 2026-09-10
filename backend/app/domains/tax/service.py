@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -11,7 +9,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
-from app.db.models import AuditEvent, IdempotencyRecord, TaxRateRule
+from app.core.idempotency import (
+    IdempotencyClaim,
+    IdempotencyError,
+    claim_idempotency,
+    complete_idempotency,
+    request_hash,
+)
+from app.db.models import AuditEvent, Organization, TaxRateRule
 from app.domains.tax.schemas import TaxRateCreate, TaxType
 
 
@@ -26,9 +31,7 @@ class TaxRateMutationResult:
 
 
 def _hash(payload: object) -> str:
-    return sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-    ).hexdigest()
+    return request_hash(payload)
 
 
 def _key(value: str) -> str:
@@ -42,6 +45,26 @@ def _org(principal: Principal) -> UUID:
     if principal.organization_id is None:
         raise TaxDomainError("an organization is required for tax operations")
     return principal.organization_id
+
+
+def _claim(
+    db: Session,
+    principal: Principal,
+    key: str,
+    operation: str,
+    request_hash_value: str,
+) -> IdempotencyClaim:
+    try:
+        return claim_idempotency(
+            db,
+            tenant_id=principal.tenant_id,
+            organization_id=principal.organization_id,
+            key=key,
+            operation=operation,
+            request_hash=request_hash_value,
+        )
+    except IdempotencyError as error:
+        raise TaxDomainError(str(error)) from error
 
 
 def _get_rule(db: Session, principal: Principal, rule_id: UUID) -> TaxRateRule:
@@ -65,7 +88,7 @@ def _audit(db: Session, principal: Principal, rule: TaxRateRule) -> AuditEvent:
         action="tax_rate.create",
         entity_type="tax_rate_rule",
         entity_id=rule.id,
-        correlation_id=str(uuid4()),
+        correlation_id=principal.correlation_id or str(uuid4()),
         payload={
             "tax_type": rule.tax_type,
             "code": rule.code,
@@ -95,19 +118,23 @@ def create_rate(
     key = _key(idempotency_key)
     normalized_payload = payload.model_dump(mode="json")
     request_hash = _hash({"operation": "tax_rate.create", "payload": normalized_payload})
-    existing = db.scalar(
-        select(IdempotencyRecord).where(
-            IdempotencyRecord.tenant_id == principal.tenant_id,
-            IdempotencyRecord.organization_id == organization_id,
-            IdempotencyRecord.key == key,
-        )
-    )
-    if existing is not None:
-        if existing.operation != "tax_rate.create" or existing.request_hash != request_hash:
-            raise TaxDomainError("idempotency key was reused with a different request")
-        if existing.resource_id is None:
+    claim = _claim(db, principal, key, "tax_rate.create", request_hash)
+    if claim.replayed:
+        if claim.record.resource_id is None:
             raise TaxDomainError("idempotency record has no tax rate resource")
-        return TaxRateMutationResult(_get_rule(db, principal, existing.resource_id), replayed=True)
+        return TaxRateMutationResult(
+            _get_rule(db, principal, claim.record.resource_id), replayed=True
+        )
+    organization = db.scalar(
+        select(Organization)
+        .where(
+            Organization.id == organization_id,
+            Organization.tenant_id == principal.tenant_id,
+        )
+        .with_for_update()
+    )
+    if organization is None:
+        raise TaxDomainError("organization not found")
 
     rules = list(
         db.scalars(
@@ -117,7 +144,7 @@ def create_rate(
                 TaxRateRule.tax_type == payload.tax_type,
                 TaxRateRule.code == payload.code.strip().upper(),
                 TaxRateRule.is_active.is_(True),
-            )
+            ).with_for_update()
         ).all()
     )
     if any(_overlaps(rule, payload) for rule in rules):
@@ -133,26 +160,22 @@ def create_rate(
         effective_to=payload.effective_to,
         is_active=True,
     )
-    db.add(rule)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(rule)
+            db.flush()
+            _audit(db, principal, rule)
+            complete_idempotency(
+                db,
+                claim,
+                resource_id=rule.id,
+                response_status=201,
+                response_body={"tax_rate_id": str(rule.id)},
+            )
     except IntegrityError as error:
-        db.rollback()
+        db.delete(claim.record)
+        db.flush()
         raise TaxDomainError("tax rate rule already exists") from error
-    _audit(db, principal, rule)
-    db.add(
-        IdempotencyRecord(
-            tenant_id=principal.tenant_id,
-            organization_id=organization_id,
-            key=key,
-            operation="tax_rate.create",
-            request_hash=request_hash,
-            response_status=201,
-            response_body={"tax_rate_id": str(rule.id)},
-            resource_id=rule.id,
-        )
-    )
-    db.flush()
     return TaxRateMutationResult(rule)
 
 

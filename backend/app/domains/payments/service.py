@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
@@ -12,10 +10,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import Principal
+from app.core.idempotency import (
+    IdempotencyClaim,
+    IdempotencyError,
+    claim_idempotency,
+    complete_idempotency,
+    request_hash,
+)
 from app.db.models import (
     AuditEvent,
+    BusinessPartner,
     FinancialDocument,
-    IdempotencyRecord,
     PaymentAllocation,
     PaymentRecord,
 )
@@ -38,8 +43,7 @@ class PaymentMutationResult:
 
 
 def _hash(payload: object) -> str:
-    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return sha256(serialized.encode("utf-8")).hexdigest()
+    return request_hash(payload)
 
 
 def _key(value: str) -> str:
@@ -68,31 +72,47 @@ def _payment_query(principal: Principal, payment_type: PaymentType):
 
 
 def _get_payment(
-    db: Session, payment_id: UUID, principal: Principal, payment_type: PaymentType
+    db: Session,
+    payment_id: UUID,
+    principal: Principal,
+    payment_type: PaymentType,
+    *,
+    for_update: bool = False,
 ) -> PaymentRecord:
     _org(principal)
-    payment = db.scalar(
-        _payment_query(principal, payment_type).where(PaymentRecord.id == payment_id)
-    )
+    statement = _payment_query(principal, payment_type).where(PaymentRecord.id == payment_id)
+    if for_update:
+        statement = statement.with_for_update()
+    payment = db.scalar(statement)
     if payment is None:
         raise PaymentDomainError("payment not found")
     return payment
 
 
-def _record(db: Session, principal: Principal, key: str) -> IdempotencyRecord | None:
-    return db.scalar(
-        select(IdempotencyRecord).where(
-            IdempotencyRecord.tenant_id == principal.tenant_id,
-            IdempotencyRecord.organization_id == principal.organization_id,
-            IdempotencyRecord.key == key,
+def _claim(
+    db: Session,
+    principal: Principal,
+    key: str,
+    operation: str,
+    request_hash_value: str,
+) -> IdempotencyClaim:
+    try:
+        return claim_idempotency(
+            db,
+            tenant_id=principal.tenant_id,
+            organization_id=principal.organization_id,
+            key=key,
+            operation=operation,
+            request_hash=request_hash_value,
         )
-    )
+    except IdempotencyError as error:
+        raise PaymentDomainError(str(error)) from error
 
 
 def _existing(
     db: Session,
     principal: Principal,
-    record: IdempotencyRecord,
+    record,
     request_hash: str,
     operation: str,
     payment_type: PaymentType,
@@ -120,7 +140,7 @@ def _audit(
         action=action,
         entity_type="payment",
         entity_id=payment.id,
-        correlation_id=str(uuid4()),
+        correlation_id=principal.correlation_id or str(uuid4()),
         payload=payload,
     )
     db.add(audit)
@@ -128,42 +148,24 @@ def _audit(
     return audit
 
 
-def _store(
+def _document(
     db: Session,
     principal: Principal,
-    key: str,
-    operation: str,
-    request_hash: str,
-    payment: PaymentRecord,
-    response_status: int,
-) -> None:
-    db.add(
-        IdempotencyRecord(
-            tenant_id=principal.tenant_id,
-            organization_id=principal.organization_id,
-            key=key,
-            operation=operation,
-            request_hash=request_hash,
-            response_status=response_status,
-            response_body={"payment_id": str(payment.id)},
-            resource_id=payment.id,
-        )
-    )
-    db.flush()
-
-
-def _document(
-    db: Session, principal: Principal, document_id: UUID, payment_type: PaymentType
+    document_id: UUID,
+    payment_type: PaymentType,
+    *,
+    for_update: bool = False,
 ) -> FinancialDocument:
     expected_type = "sales_invoice" if payment_type == "receipt" else "vendor_bill"
-    document = db.scalar(
-        select(FinancialDocument).where(
+    statement = select(FinancialDocument).where(
             FinancialDocument.id == document_id,
             FinancialDocument.tenant_id == principal.tenant_id,
             FinancialDocument.organization_id == principal.organization_id,
             FinancialDocument.document_type == expected_type,
         )
-    )
+    if for_update:
+        statement = statement.with_for_update()
+    document = db.scalar(statement)
     if document is None:
         raise PaymentDomainError("allocated document not found")
     if document.status != "posted":
@@ -197,7 +199,9 @@ def _validate_allocations(
         if allocation.document_id in seen:
             raise PaymentDomainError("a payment cannot allocate the same document twice")
         seen.add(allocation.document_id)
-        document = _document(db, principal, allocation.document_id, payment_type)
+        document = _document(
+            db, principal, allocation.document_id, payment_type, for_update=True
+        )
         if document.partner_id != payload.partner_id:
             raise PaymentDomainError("allocated documents must belong to the payment partner")
         if document.currency_code != payload.currency_code.upper():
@@ -216,6 +220,58 @@ def _validate_allocations(
     return allocation_total
 
 
+def _validate_persisted_allocations(
+    db: Session, principal: Principal, payment: PaymentRecord
+) -> None:
+    """Recheck balances while holding document locks immediately before posting."""
+    expected_partner_type = "customer" if payment.payment_type == "receipt" else "vendor"
+    partner = db.scalar(
+        select(BusinessPartner).where(
+            BusinessPartner.id == payment.partner_id,
+            BusinessPartner.tenant_id == principal.tenant_id,
+            BusinessPartner.organization_id == principal.organization_id,
+        )
+    )
+    if partner is None:
+        raise PaymentDomainError("payment partner not found")
+    if partner.partner_type not in (expected_partner_type, "both"):
+        raise PaymentDomainError(
+            f"{payment.payment_type} requires a partner with {expected_partner_type} capability"
+        )
+    if not partner.is_active:
+        raise PaymentDomainError("payment partner is archived")
+
+    allocation_total = Decimal("0.00")
+    seen: set[UUID] = set()
+    for allocation in sorted(payment.allocations, key=lambda item: str(item.document_id)):
+        if allocation.document_id in seen:
+            raise PaymentDomainError("a payment cannot allocate the same document twice")
+        seen.add(allocation.document_id)
+        document = _document(
+            db,
+            principal,
+            allocation.document_id,
+            payment.payment_type,
+            for_update=True,
+        )
+        if document.partner_id != payment.partner_id:
+            raise PaymentDomainError("allocated documents must belong to the payment partner")
+        if document.currency_code != payment.currency_code:
+            raise PaymentDomainError("allocated documents must use the payment currency")
+        outstanding = document.total - _posted_allocated(db, principal, document.id)
+        if allocation.amount > outstanding:
+            raise PaymentDomainError(
+                f"allocation exceeds outstanding document balance ({document.document_number})"
+            )
+        allocation_total += allocation.amount
+
+    allocation_total = allocation_total.quantize(MONEY)
+    if allocation_total > payment.amount:
+        raise PaymentDomainError("allocations cannot exceed payment amount")
+    if allocation_total < payment.amount and not payment.unapplied_account_code:
+        raise PaymentDomainError("an unapplied account is required for an unallocated amount")
+
+
 def create_payment(
     db: Session,
     payload: PaymentCreate,
@@ -226,11 +282,27 @@ def create_payment(
     organization_id = _org(principal)
     key = _key(idempotency_key)
     request_hash = _hash({"payment_type": payment_type, "payload": payload.model_dump(mode="json")})
-    existing_record = _record(db, principal, key)
-    if existing_record is not None:
+    claim = _claim(db, principal, key, "payment.create", request_hash)
+    if claim.replayed:
         return _existing(
-            db, principal, existing_record, request_hash, "payment.create", payment_type
+            db, principal, claim.record, request_hash, "payment.create", payment_type
         )
+    expected_partner_type = "customer" if payment_type == "receipt" else "vendor"
+    partner = db.scalar(
+        select(BusinessPartner).where(
+            BusinessPartner.id == payload.partner_id,
+            BusinessPartner.tenant_id == principal.tenant_id,
+            BusinessPartner.organization_id == organization_id,
+        )
+    )
+    if partner is None:
+        raise PaymentDomainError("payment partner not found")
+    if partner.partner_type not in (expected_partner_type, "both"):
+        raise PaymentDomainError(
+            f"{payment_type} requires a partner with {expected_partner_type} capability"
+        )
+    if not partner.is_active:
+        raise PaymentDomainError("payment partner is archived")
     allocation_total = _validate_allocations(db, principal, payload, payment_type)
     payment_number = payload.payment_number.strip().upper()
     if db.scalar(
@@ -268,25 +340,33 @@ def create_payment(
             for allocation in payload.allocations
         ],
     )
-    db.add(payment)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(payment)
+            db.flush()
+            _audit(
+                db,
+                principal,
+                payment,
+                "payment.create",
+                {
+                    "payment_type": payment.payment_type,
+                    "payment_number": payment.payment_number,
+                    "amount": str(payment.amount),
+                    "allocated": str(allocation_total),
+                },
+            )
+            complete_idempotency(
+                db,
+                claim,
+                resource_id=payment.id,
+                response_status=201,
+                response_body={"payment_id": str(payment.id)},
+            )
     except IntegrityError as error:
-        db.rollback()
+        db.delete(claim.record)
+        db.flush()
         raise PaymentDomainError("payment number already exists for this payment type") from error
-    _audit(
-        db,
-        principal,
-        payment,
-        "payment.create",
-        {
-            "payment_type": payment.payment_type,
-            "payment_number": payment.payment_number,
-            "amount": str(payment.amount),
-            "allocated": str(allocation_total),
-        },
-    )
-    _store(db, principal, key, "payment.create", request_hash, payment, 201)
     return PaymentMutationResult(payment)
 
 
@@ -363,19 +443,20 @@ def post_payment(
     _org(principal)
     key = _key(idempotency_key)
     request_hash = _hash({"payment_type": payment_type, "payment_id": str(payment_id)})
-    existing_record = _record(db, principal, key)
-    if existing_record is not None:
-        return _existing(db, principal, existing_record, request_hash, "payment.post", payment_type)
-    payment = _get_payment(db, payment_id, principal, payment_type)
+    claim = _claim(db, principal, key, "payment.post", request_hash)
+    if claim.replayed:
+        return _existing(db, principal, claim.record, request_hash, "payment.post", payment_type)
+    payment = _get_payment(db, payment_id, principal, payment_type, for_update=True)
     if payment.status != "draft":
         raise PaymentDomainError("only draft payments can be posted")
+    _validate_persisted_allocations(db, principal, payment)
     command = _posting_command(payment)
     try:
         ledger_result = post_journal_entry(
             db,
             command,
             principal,
-            f"payment-ledger:{payment.id}:{request_hash[:64]}",
+            f"payment-ledger:{payment.id}",
         )
     except LedgerDomainError as error:
         raise PaymentDomainError(str(error)) from error
@@ -395,7 +476,13 @@ def post_payment(
             "ledger_entry_id": str(ledger_result.entry_id),
         },
     )
-    _store(db, principal, key, "payment.post", request_hash, payment, 200)
+    complete_idempotency(
+        db,
+        claim,
+        resource_id=payment.id,
+        response_status=200,
+        response_body={"payment_id": str(payment.id)},
+    )
     return PaymentMutationResult(payment)
 
 

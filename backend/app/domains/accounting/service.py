@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -11,12 +9,19 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
+from app.core.idempotency import (
+    IdempotencyClaim,
+    IdempotencyError,
+    claim_idempotency,
+    complete_idempotency,
+    request_hash,
+)
 from app.db.models import (
     AuditEvent,
     ChartAccount,
     FiscalPeriod,
-    IdempotencyRecord,
     JournalLineRecord,
+    Organization,
 )
 from app.domains.accounting.schemas import (
     ChartAccountCreate,
@@ -42,8 +47,7 @@ class PeriodMutationResult:
 
 
 def _hash(payload: object) -> str:
-    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return sha256(serialized.encode("utf-8")).hexdigest()
+    return request_hash(payload)
 
 
 def _key(value: str) -> str:
@@ -59,14 +63,24 @@ def _org(principal: Principal) -> UUID:
     return principal.organization_id
 
 
-def _record(db: Session, principal: Principal, key: str) -> IdempotencyRecord | None:
-    return db.scalar(
-        select(IdempotencyRecord).where(
-            IdempotencyRecord.tenant_id == principal.tenant_id,
-            IdempotencyRecord.organization_id == principal.organization_id,
-            IdempotencyRecord.key == key,
+def _claim(
+    db: Session,
+    principal: Principal,
+    key: str,
+    operation: str,
+    request_hash_value: str,
+) -> IdempotencyClaim:
+    try:
+        return claim_idempotency(
+            db,
+            tenant_id=principal.tenant_id,
+            organization_id=principal.organization_id,
+            key=key,
+            operation=operation,
+            request_hash=request_hash_value,
         )
-    )
+    except IdempotencyError as error:
+        raise AccountingDomainError(str(error)) from error
 
 
 def _audit(
@@ -84,7 +98,7 @@ def _audit(
         action=action,
         entity_type=entity_type,
         entity_id=entity_id,
-        correlation_id=str(uuid4()),
+        correlation_id=principal.correlation_id or str(uuid4()),
         payload=payload,
     )
     db.add(audit)
@@ -92,42 +106,34 @@ def _audit(
     return audit
 
 
-def _store(
-    db: Session,
-    principal: Principal,
-    key: str,
-    operation: str,
-    request_hash: str,
-    resource_id: UUID,
-    response_status: int,
-    body_key: str,
-) -> None:
-    db.add(
-        IdempotencyRecord(
-            tenant_id=principal.tenant_id,
-            organization_id=principal.organization_id,
-            key=key,
-            operation=operation,
-            request_hash=request_hash,
-            response_status=response_status,
-            response_body={body_key: str(resource_id)},
-            resource_id=resource_id,
-        )
+def _get_account(
+    db: Session, principal: Principal, account_id: UUID, *, for_update: bool = False
+) -> ChartAccount:
+    statement = select(ChartAccount).where(
+        ChartAccount.id == account_id,
+        ChartAccount.tenant_id == principal.tenant_id,
+        ChartAccount.organization_id == principal.organization_id,
     )
-    db.flush()
-
-
-def _get_account(db: Session, principal: Principal, account_id: UUID) -> ChartAccount:
+    if for_update:
+        statement = statement.with_for_update()
     account = db.scalar(
-        select(ChartAccount).where(
-            ChartAccount.id == account_id,
-            ChartAccount.tenant_id == principal.tenant_id,
-            ChartAccount.organization_id == principal.organization_id,
-        )
+        statement
     )
     if account is None:
         raise AccountingDomainError("account not found")
     return account
+
+
+def _assert_no_parent_cycle(
+    db: Session, principal: Principal, account_id: UUID | None, parent_id: UUID | None
+) -> None:
+    seen = {account_id} if account_id is not None else set()
+    current_id = parent_id
+    while current_id is not None:
+        if current_id in seen:
+            raise AccountingDomainError("account hierarchy cycle is not allowed")
+        seen.add(current_id)
+        current_id = _get_account(db, principal, current_id).parent_id
 
 
 def list_accounts(
@@ -154,14 +160,12 @@ def create_account(
     request_hash = _hash(
         {"operation": "account.create", "payload": payload.model_dump(mode="json")}
     )
-    existing = _record(db, principal, key)
-    if existing is not None:
-        if existing.operation != "account.create" or existing.request_hash != request_hash:
-            raise AccountingDomainError("idempotency key was reused with a different request")
-        if existing.resource_id is None:
+    claim = _claim(db, principal, key, "account.create", request_hash)
+    if claim.replayed:
+        if claim.record.resource_id is None:
             raise AccountingDomainError("idempotency record has no account resource")
         return AccountMutationResult(
-            _get_account(db, principal, existing.resource_id), replayed=True
+            _get_account(db, principal, claim.record.resource_id), replayed=True
         )
 
     code = payload.code.strip().upper()
@@ -172,9 +176,7 @@ def create_account(
     ):
         raise AccountingDomainError("account code already exists in this organization")
     if payload.parent_id is not None:
-        parent = _get_account(db, principal, payload.parent_id)
-        if parent.id == payload.parent_id and parent.parent_id == payload.parent_id:
-            raise AccountingDomainError("an account cannot be its own parent")
+        _assert_no_parent_cycle(db, principal, None, payload.parent_id)
 
     account = ChartAccount(
         tenant_id=principal.tenant_id,
@@ -186,14 +188,29 @@ def create_account(
         is_control=payload.is_control,
         is_active=True,
     )
-    db.add(account)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(account)
+            db.flush()
+            _audit(
+                db,
+                principal,
+                "chart_account",
+                account.id,
+                "account.create",
+                {"code": account.code},
+            )
+            complete_idempotency(
+                db,
+                claim,
+                resource_id=account.id,
+                response_status=201,
+                response_body={"account_id": str(account.id)},
+            )
     except IntegrityError as error:
-        db.rollback()
+        db.delete(claim.record)
+        db.flush()
         raise AccountingDomainError("account code already exists in this organization") from error
-    _audit(db, principal, "chart_account", account.id, "account.create", {"code": account.code})
-    _store(db, principal, key, "account.create", request_hash, account.id, 201, "account_id")
     return AccountMutationResult(account)
 
 
@@ -213,26 +230,20 @@ def update_account(
             "payload": payload.model_dump(mode="json"),
         }
     )
-    existing = _record(db, principal, key)
-    if existing is not None:
-        if existing.operation != "account.update" or existing.request_hash != request_hash:
-            raise AccountingDomainError("idempotency key was reused with a different request")
-        if existing.resource_id is None:
+    claim = _claim(db, principal, key, "account.update", request_hash)
+    if claim.replayed:
+        if claim.record.resource_id is None:
             raise AccountingDomainError("idempotency record has no account resource")
         return AccountMutationResult(
-            _get_account(db, principal, existing.resource_id), replayed=True
+            _get_account(db, principal, claim.record.resource_id), replayed=True
         )
 
-    account = _get_account(db, principal, account_id)
+    account = _get_account(db, principal, account_id, for_update=True)
     if account.version != payload.expected_version:
         raise AccountingDomainError("account version does not match; reload before updating")
     changes = payload.model_dump(exclude={"expected_version"}, exclude_unset=True)
     if payload.parent_id is not None:
-        parent = _get_account(db, principal, payload.parent_id)
-        if parent.id == account.id:
-            raise AccountingDomainError("an account cannot be its own parent")
-        if parent.id == account.id or parent.parent_id == account.id:
-            raise AccountingDomainError("account hierarchy cycle is not allowed")
+        _assert_no_parent_cycle(db, principal, account.id, payload.parent_id)
     has_postings = db.scalar(
         select(JournalLineRecord.id).where(JournalLineRecord.account_id == account.id)
     )
@@ -248,7 +259,13 @@ def update_account(
     _audit(
         db, principal, "chart_account", account.id, "account.update", {"version": account.version}
     )
-    _store(db, principal, key, "account.update", request_hash, account.id, 200, "account_id")
+    complete_idempotency(
+        db,
+        claim,
+        resource_id=account.id,
+        response_status=200,
+        response_body={"account_id": str(account.id)},
+    )
     return AccountMutationResult(account)
 
 
@@ -288,22 +305,33 @@ def create_period(
     organization_id = _org(principal)
     key = _key(idempotency_key)
     request_hash = _hash({"operation": "period.create", "payload": payload.model_dump(mode="json")})
-    existing = _record(db, principal, key)
-    if existing is not None:
-        if existing.operation != "period.create" or existing.request_hash != request_hash:
-            raise AccountingDomainError("idempotency key was reused with a different request")
-        if existing.resource_id is None:
+    claim = _claim(db, principal, key, "period.create", request_hash)
+    if claim.replayed:
+        if claim.record.resource_id is None:
             raise AccountingDomainError("idempotency record has no period resource")
-        return PeriodMutationResult(_get_period(db, principal, existing.resource_id), replayed=True)
+        return PeriodMutationResult(
+            _get_period(db, principal, claim.record.resource_id), replayed=True
+        )
+    organization = db.scalar(
+        select(Organization)
+        .where(
+            Organization.id == organization_id,
+            Organization.tenant_id == principal.tenant_id,
+        )
+        .with_for_update()
+    )
+    if organization is None:
+        raise AccountingDomainError("organization not found")
     duplicate = db.scalar(
         select(FiscalPeriod.id).where(
+            FiscalPeriod.tenant_id == principal.tenant_id,
             FiscalPeriod.organization_id == organization_id,
-            FiscalPeriod.start_date == payload.start_date,
-            FiscalPeriod.end_date == payload.end_date,
+            FiscalPeriod.start_date <= payload.end_date,
+            FiscalPeriod.end_date >= payload.start_date,
         )
     )
     if duplicate is not None:
-        raise AccountingDomainError("fiscal period dates already exist in this organization")
+        raise AccountingDomainError("fiscal period dates overlap an existing period")
     period = FiscalPeriod(
         tenant_id=principal.tenant_id,
         organization_id=organization_id,
@@ -312,16 +340,31 @@ def create_period(
         end_date=payload.end_date,
         status="open",
     )
-    db.add(period)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(period)
+            db.flush()
+            _audit(
+                db,
+                principal,
+                "fiscal_period",
+                period.id,
+                "period.create",
+                {"name": period.name},
+            )
+            complete_idempotency(
+                db,
+                claim,
+                resource_id=period.id,
+                response_status=201,
+                response_body={"period_id": str(period.id)},
+            )
     except IntegrityError as error:
-        db.rollback()
+        db.delete(claim.record)
+        db.flush()
         raise AccountingDomainError(
-            "fiscal period dates already exist in this organization"
+            "fiscal period dates overlap an existing period"
         ) from error
-    _audit(db, principal, "fiscal_period", period.id, "period.create", {"name": period.name})
-    _store(db, principal, key, "period.create", request_hash, period.id, 201, "period_id")
     return PeriodMutationResult(period)
 
 
@@ -334,14 +377,24 @@ def lock_period(
     _org(principal)
     key = _key(idempotency_key)
     request_hash = _hash({"operation": "period.lock", "period_id": str(period_id)})
-    existing = _record(db, principal, key)
-    if existing is not None:
-        if existing.operation != "period.lock" or existing.request_hash != request_hash:
-            raise AccountingDomainError("idempotency key was reused with a different request")
-        if existing.resource_id is None:
+    claim = _claim(db, principal, key, "period.lock", request_hash)
+    if claim.replayed:
+        if claim.record.resource_id is None:
             raise AccountingDomainError("idempotency record has no period resource")
-        return PeriodMutationResult(_get_period(db, principal, existing.resource_id), replayed=True)
-    period = _get_period(db, principal, period_id)
+        return PeriodMutationResult(
+            _get_period(db, principal, claim.record.resource_id), replayed=True
+        )
+    period = db.scalar(
+        select(FiscalPeriod)
+        .where(
+            FiscalPeriod.id == period_id,
+            FiscalPeriod.tenant_id == principal.tenant_id,
+            FiscalPeriod.organization_id == principal.organization_id,
+        )
+        .with_for_update()
+    )
+    if period is None:
+        raise AccountingDomainError("fiscal period not found")
     if period.status != "open":
         raise AccountingDomainError("period is already locked")
     period.status = "locked"
@@ -349,7 +402,13 @@ def lock_period(
     period.version += 1
     db.flush()
     _audit(db, principal, "fiscal_period", period.id, "period.lock", {"version": period.version})
-    _store(db, principal, key, "period.lock", request_hash, period.id, 200, "period_id")
+    complete_idempotency(
+        db,
+        claim,
+        resource_id=period.id,
+        response_status=200,
+        response_body={"period_id": str(period.id)},
+    )
     return PeriodMutationResult(period)
 
 

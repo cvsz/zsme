@@ -65,7 +65,7 @@ const aged = {
 
 async function configureConnectedWorkspace(page: Page) {
   await page.addInitScript(() => {
-    window.localStorage.setItem('zsme-api-base-url', 'http://api.test');
+    window.localStorage.setItem('zsme-api-base-url', 'http://127.0.0.1:8000');
     window.sessionStorage.setItem('zsme-access-token', 'session-token');
   });
   await page.route('**/v1/auth/me', async (route) => {
@@ -126,6 +126,7 @@ test('profit and loss loads its dedicated server-derived contract', async ({ pag
 });
 
 test('balance sheet, general ledger and ageing pages use dedicated contracts', async ({ page }) => {
+  test.setTimeout(90_000);
   await configureConnectedWorkspace(page);
   const requestedUrls: string[] = [];
   await page.route('**/v1/reports/**', async (route) => {

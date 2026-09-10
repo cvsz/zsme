@@ -126,9 +126,10 @@ class FinancialDocumentLine(IdentifiedTimestampMixin, OrganizationScopeMixin, Ba
 
 def _status_was_posted(target: FinancialDocument) -> bool:
     history = sqlalchemy_inspect(target).attrs.status.history
-    return target.status == "posted" and not (
-        history.has_changes() and history.deleted and history.deleted[0] != "posted"
+    previous_status = history.deleted[0] if history.deleted else (
+        history.unchanged[0] if history.unchanged else None
     )
+    return previous_status == "posted"
 
 
 @event.listens_for(FinancialDocument, "before_update")
@@ -139,7 +140,7 @@ def prevent_posted_document_mutation(_mapper, _connection, target: FinancialDocu
 
 @event.listens_for(FinancialDocument, "before_delete")
 def prevent_posted_document_delete(_mapper, _connection, target: FinancialDocument) -> None:
-    if target.status == "posted":
+    if _status_was_posted(target):
         raise ValueError("posted financial documents are immutable")
 
 

@@ -26,7 +26,7 @@ const vatRule = {
 
 async function configureConnectedWorkspace(page: Page) {
   await page.addInitScript(() => {
-    window.localStorage.setItem('zsme-api-base-url', 'http://api.test');
+    window.localStorage.setItem('zsme-api-base-url', 'http://127.0.0.1:8000');
     window.sessionStorage.setItem('zsme-access-token', 'session-token');
   });
   await page.route('**/v1/auth/me', async (route) => {

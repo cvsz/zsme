@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
-from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -12,6 +10,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import Principal
+from app.core.idempotency import (
+    IdempotencyClaim,
+    IdempotencyError,
+    claim_idempotency,
+    complete_idempotency,
+    request_hash,
+)
 from app.db.models import (
     AuditEvent,
     BusinessPartner,
@@ -38,8 +43,7 @@ class DocumentMutationResult:
 
 
 def _request_hash(payload: object) -> str:
-    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return sha256(serialized.encode("utf-8")).hexdigest()
+    return request_hash(payload)
 
 
 def _validate_key(idempotency_key: str) -> str:
@@ -55,6 +59,26 @@ def _require_organization(principal: Principal) -> UUID:
     return principal.organization_id
 
 
+def _claim(
+    db: Session,
+    principal: Principal,
+    key: str,
+    operation: str,
+    request_hash_value: str,
+) -> IdempotencyClaim:
+    try:
+        return claim_idempotency(
+            db,
+            tenant_id=principal.tenant_id,
+            organization_id=principal.organization_id,
+            key=key,
+            operation=operation,
+            request_hash=request_hash_value,
+        )
+    except IdempotencyError as error:
+        raise DocumentDomainError(str(error)) from error
+
+
 def _document_query(principal: Principal, document_type: DocumentType):
     return (
         select(FinancialDocument)
@@ -68,12 +92,18 @@ def _document_query(principal: Principal, document_type: DocumentType):
 
 
 def _get_scoped_document(
-    db: Session, document_id: UUID, principal: Principal, document_type: DocumentType
+    db: Session,
+    document_id: UUID,
+    principal: Principal,
+    document_type: DocumentType,
+    *,
+    for_update: bool = False,
 ) -> FinancialDocument:
     _require_organization(principal)
-    document = db.scalar(
-        _document_query(principal, document_type).where(FinancialDocument.id == document_id)
-    )
+    statement = _document_query(principal, document_type).where(FinancialDocument.id == document_id)
+    if for_update:
+        statement = statement.with_for_update()
+    document = db.scalar(statement)
     if document is None:
         raise DocumentDomainError("document not found")
     return document
@@ -95,26 +125,6 @@ def _existing_result(
     return DocumentMutationResult(document=document, replayed=True)
 
 
-def _find_existing(
-    db: Session,
-    principal: Principal,
-    key: str,
-    request_hash: str,
-    operation: str,
-    document_type: DocumentType,
-) -> DocumentMutationResult | None:
-    record = db.scalar(
-        select(IdempotencyRecord).where(
-            IdempotencyRecord.tenant_id == principal.tenant_id,
-            IdempotencyRecord.organization_id == principal.organization_id,
-            IdempotencyRecord.key == key,
-        )
-    )
-    if record is None:
-        return None
-    return _existing_result(db, principal, record, request_hash, operation, document_type)
-
-
 def _audit(
     db: Session,
     principal: Principal,
@@ -129,36 +139,12 @@ def _audit(
         action=action,
         entity_type="financial_document",
         entity_id=document.id,
-        correlation_id=str(uuid4()),
+        correlation_id=principal.correlation_id or str(uuid4()),
         payload=payload,
     )
     db.add(audit)
     db.flush()
     return audit
-
-
-def _store_idempotency(
-    db: Session,
-    principal: Principal,
-    key: str,
-    operation: str,
-    request_hash: str,
-    document: FinancialDocument,
-    response_status: int,
-) -> None:
-    db.add(
-        IdempotencyRecord(
-            tenant_id=principal.tenant_id,
-            organization_id=principal.organization_id,
-            key=key,
-            operation=operation,
-            request_hash=request_hash,
-            response_status=response_status,
-            response_body={"document_id": str(document.id)},
-            resource_id=document.id,
-        )
-    )
-    db.flush()
 
 
 def _partner_for_document(
@@ -202,9 +188,11 @@ def create_document(
     request_hash = _request_hash(
         {"document_type": document_type, "payload": payload.model_dump(mode="json")}
     )
-    existing = _find_existing(db, principal, key, request_hash, "document.create", document_type)
-    if existing is not None:
-        return existing
+    claim = _claim(db, principal, key, "document.create", request_hash)
+    if claim.replayed:
+        return _existing_result(
+            db, principal, claim.record, request_hash, "document.create", document_type
+        )
 
     partner = _partner_for_document(db, principal, payload.partner_id, document_type)
     document_number = payload.document_number.strip().upper()
@@ -263,29 +251,34 @@ def create_document(
         status="draft",
         lines=lines,
     )
-    db.add(document)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(document)
+            db.flush()
+            _audit(
+                db,
+                principal,
+                document,
+                "document.create",
+                {
+                    "document_type": document.document_type,
+                    "document_number": document.document_number,
+                    "total": str(document.total),
+                },
+            )
+            complete_idempotency(
+                db,
+                claim,
+                resource_id=document.id,
+                response_status=201,
+                response_body={"document_id": str(document.id)},
+            )
     except IntegrityError as error:
-        db.rollback()
+        db.delete(claim.record)
+        db.flush()
         raise DocumentDomainError(
             "document number already exists for this document type"
         ) from error
-
-    _audit(
-        db,
-        principal,
-        document,
-        "document.create",
-        {
-            "document_type": document.document_type,
-            "document_number": document.document_number,
-            "total": str(document.total),
-        },
-    )
-    _store_idempotency(
-        db, principal, key, "document.create", request_hash, document, response_status=201
-    )
     return DocumentMutationResult(document=document)
 
 
@@ -375,11 +368,15 @@ def post_document(
     _require_organization(principal)
     key = _validate_key(idempotency_key)
     request_hash = _request_hash({"document_type": document_type, "document_id": str(document_id)})
-    existing = _find_existing(db, principal, key, request_hash, "document.post", document_type)
-    if existing is not None:
-        return existing
+    claim = _claim(db, principal, key, "document.post", request_hash)
+    if claim.replayed:
+        return _existing_result(
+            db, principal, claim.record, request_hash, "document.post", document_type
+        )
 
-    document = _get_scoped_document(db, document_id, principal, document_type)
+    document = _get_scoped_document(
+        db, document_id, principal, document_type, for_update=True
+    )
     if document.status != "draft":
         raise DocumentDomainError("only draft documents can be posted")
     if not document.lines:
@@ -413,8 +410,12 @@ def post_document(
             "ledger_audit_event_id": str(ledger_result.audit_event_id),
         },
     )
-    _store_idempotency(
-        db, principal, key, "document.post", request_hash, document, response_status=200
+    complete_idempotency(
+        db,
+        claim,
+        resource_id=document.id,
+        response_status=200,
+        response_body={"document_id": str(document.id)},
     )
     return DocumentMutationResult(document=document)
 

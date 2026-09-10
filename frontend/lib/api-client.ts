@@ -1,6 +1,9 @@
 const API_BASE_URL_KEY = "zsme-api-base-url";
 const ACCESS_TOKEN_KEY = "zsme-access-token";
 const API_BASE_URL_EVENT = "zsme-api-base-url-change";
+const customApiEndpointAllowed =
+  process.env.NEXT_PUBLIC_ALLOW_CUSTOM_API_ENDPOINT === "true" ||
+  (process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_ALLOW_CUSTOM_API_ENDPOINT !== "false");
 
 export type ProblemDetails = {
   code?: string;
@@ -46,6 +49,14 @@ function normalizeApiBaseUrl(value: string): string {
   if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname) {
     throw new ApiConfigurationError("API endpoint must use HTTP or HTTPS");
   }
+  const allowInsecureCustomEndpoint =
+    customApiEndpointAllowed && process.env.NEXT_PUBLIC_ALLOW_INSECURE_CUSTOM_API_ENDPOINT === "true";
+  if (process.env.NODE_ENV === "production" && parsed.protocol !== "https:" && !allowInsecureCustomEndpoint) {
+    throw new ApiConfigurationError("Production API endpoints must use HTTPS");
+  }
+  if (parsed.username || parsed.password || parsed.hash) {
+    throw new ApiConfigurationError("API endpoint must not include credentials or a fragment");
+  }
   return normalized;
 }
 
@@ -61,6 +72,9 @@ export function getApiBaseUrl(): string {
   if (typeof window === "undefined") {
     return "";
   }
+  if (!customApiEndpointAllowed) {
+    return "";
+  }
   try {
     return normalizeApiBaseUrl(window.localStorage.getItem(API_BASE_URL_KEY) || "");
   } catch {
@@ -70,6 +84,10 @@ export function getApiBaseUrl(): string {
 
 export function isApiBaseUrlManaged(): boolean {
   return Boolean((process.env.NEXT_PUBLIC_API_BASE_URL || "").trim());
+}
+
+export function isApiEndpointUserConfigurable(): boolean {
+  return customApiEndpointAllowed && !isApiBaseUrlManaged();
 }
 
 export function getServerApiBaseUrl(): string {
@@ -94,6 +112,9 @@ export function subscribeToApiBaseUrl(onStoreChange: () => void): () => void {
 }
 
 export function setApiBaseUrl(value: string): string {
+  if (!customApiEndpointAllowed && value.trim()) {
+    throw new ApiConfigurationError("API endpoint is managed by the deployment environment");
+  }
   const normalized = normalizeApiBaseUrl(value);
   if (typeof window !== "undefined") {
     if (normalized) {

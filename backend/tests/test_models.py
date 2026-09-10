@@ -61,4 +61,4 @@ def test_metadata_contains_required_tables(db_engine) -> None:
     Base.metadata.create_all(db_engine)
     names = set(inspect(db_engine).get_table_names())
 
-    assert {"tenants", "journal_entries", "audit_events"} <= names
+    assert {"tenants", "journal_entries", "audit_events", "login_throttles"} <= names

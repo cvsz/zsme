@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy import or_, select
@@ -11,6 +9,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
+from app.core.idempotency import (
+    IdempotencyClaim,
+    IdempotencyError,
+    claim_idempotency,
+    complete_idempotency,
+    request_hash,
+)
 from app.db.models import AuditEvent, BusinessPartner, IdempotencyRecord
 from app.domains.partners.schemas import PartnerCreate, PartnerUpdate
 
@@ -26,8 +31,7 @@ class PartnerMutationResult:
 
 
 def _request_hash(payload: object) -> str:
-    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return sha256(serialized.encode("utf-8")).hexdigest()
+    return request_hash(payload)
 
 
 def _validate_key(idempotency_key: str) -> str:
@@ -60,19 +64,24 @@ def _existing_partner_result(
     return PartnerMutationResult(partner=partner, replayed=True)
 
 
-def _find_idempotency_record(
-    db: Session, principal: Principal, key: str, request_hash: str, operation: str
-) -> PartnerMutationResult | None:
-    record = db.scalar(
-        select(IdempotencyRecord).where(
-            IdempotencyRecord.tenant_id == principal.tenant_id,
-            IdempotencyRecord.organization_id == principal.organization_id,
-            IdempotencyRecord.key == key,
+def _claim(
+    db: Session,
+    principal: Principal,
+    key: str,
+    operation: str,
+    request_hash_value: str,
+) -> IdempotencyClaim:
+    try:
+        return claim_idempotency(
+            db,
+            tenant_id=principal.tenant_id,
+            organization_id=principal.organization_id,
+            key=key,
+            operation=operation,
+            request_hash=request_hash_value,
         )
-    )
-    if record is None:
-        return None
-    return _existing_partner_result(db, principal, record, request_hash, operation)
+    except IdempotencyError as error:
+        raise PartnerDomainError(str(error)) from error
 
 
 def _require_organization(principal: Principal) -> UUID:
@@ -99,35 +108,12 @@ def _create_audit(
         action=action,
         entity_type="business_partner",
         entity_id=partner.id,
-        correlation_id=str(uuid4()),
+        correlation_id=principal.correlation_id or str(uuid4()),
         payload=payload,
     )
     db.add(audit)
     db.flush()
     return audit
-
-
-def _store_idempotency(
-    db: Session,
-    principal: Principal,
-    key: str,
-    operation: str,
-    request_hash: str,
-    partner: BusinessPartner,
-) -> None:
-    db.add(
-        IdempotencyRecord(
-            tenant_id=principal.tenant_id,
-            organization_id=principal.organization_id,
-            key=key,
-            operation=operation,
-            request_hash=request_hash,
-            response_status=201,
-            response_body={"partner_id": str(partner.id)},
-            resource_id=partner.id,
-        )
-    )
-    db.flush()
 
 
 def create_partner(
@@ -139,9 +125,11 @@ def create_partner(
     organization_id = _require_organization(principal)
     key = _validate_key(idempotency_key)
     request_hash = _request_hash(payload.model_dump(mode="json"))
-    existing = _find_idempotency_record(db, principal, key, request_hash, "partner.create")
-    if existing is not None:
-        return existing
+    claim = _claim(db, principal, key, "partner.create", request_hash)
+    if claim.replayed:
+        return _existing_partner_result(
+            db, principal, claim.record, request_hash, "partner.create"
+        )
 
     partner = BusinessPartner(
         tenant_id=principal.tenant_id,
@@ -158,22 +146,27 @@ def create_partner(
         credit_limit=payload.credit_limit,
         tags=[tag.strip() for tag in payload.tags if tag.strip()],
     )
-    db.add(partner)
     try:
-        db.flush()
-        _create_audit(
-            db,
-            principal,
-            partner,
-            "partner.create",
-            {"partner_code": partner.partner_code, "partner_type": partner.partner_type},
-        )
-        _store_idempotency(db, principal, key, "partner.create", request_hash, partner)
+        with db.begin_nested():
+            db.add(partner)
+            db.flush()
+            _create_audit(
+                db,
+                principal,
+                partner,
+                "partner.create",
+                {"partner_code": partner.partner_code, "partner_type": partner.partner_type},
+            )
+            complete_idempotency(
+                db,
+                claim,
+                resource_id=partner.id,
+                response_status=201,
+                response_body={"partner_id": str(partner.id)},
+            )
     except IntegrityError as error:
-        db.rollback()
-        existing = _find_idempotency_record(db, principal, key, request_hash, "partner.create")
-        if existing is not None:
-            return existing
+        db.delete(claim.record)
+        db.flush()
         raise PartnerDomainError("partner code already exists in this organization") from error
     return PartnerMutationResult(partner=partner)
 
@@ -208,15 +201,18 @@ def list_partners(
     return list(db.scalars(statement.order_by(BusinessPartner.partner_code)).all())
 
 
-def get_partner(db: Session, partner_id: UUID, principal: Principal) -> BusinessPartner:
+def get_partner(
+    db: Session, partner_id: UUID, principal: Principal, *, for_update: bool = False
+) -> BusinessPartner:
     organization_id = _require_organization(principal)
-    partner = db.scalar(
-        select(BusinessPartner).where(
-            BusinessPartner.id == partner_id,
-            BusinessPartner.tenant_id == principal.tenant_id,
-            BusinessPartner.organization_id == organization_id,
-        )
+    statement = select(BusinessPartner).where(
+        BusinessPartner.id == partner_id,
+        BusinessPartner.tenant_id == principal.tenant_id,
+        BusinessPartner.organization_id == organization_id,
     )
+    if for_update:
+        statement = statement.with_for_update()
+    partner = db.scalar(statement)
     if partner is None:
         raise PartnerDomainError("partner not found")
     return partner
@@ -231,12 +227,16 @@ def update_partner(
 ) -> PartnerMutationResult:
     _require_organization(principal)
     key = _validate_key(idempotency_key)
-    request_hash = _request_hash(payload.model_dump(mode="json"))
-    existing = _find_idempotency_record(db, principal, key, request_hash, "partner.update")
-    if existing is not None:
-        return existing
+    request_hash = _request_hash(
+        {"partner_id": str(partner_id), "payload": payload.model_dump(mode="json")}
+    )
+    claim = _claim(db, principal, key, "partner.update", request_hash)
+    if claim.replayed:
+        return _existing_partner_result(
+            db, principal, claim.record, request_hash, "partner.update"
+        )
 
-    partner = get_partner(db, partner_id, principal)
+    partner = get_partner(db, partner_id, principal, for_update=True)
     if partner.version != payload.expected_version:
         raise PartnerDomainError("partner version does not match; reload before updating")
     changes = payload.model_dump(exclude={"expected_version"}, exclude_unset=True)
@@ -251,7 +251,13 @@ def update_partner(
     partner.version += 1
     db.flush()
     _create_audit(db, principal, partner, "partner.update", {"version": partner.version})
-    _store_idempotency(db, principal, key, "partner.update", request_hash, partner)
+    complete_idempotency(
+        db,
+        claim,
+        resource_id=partner.id,
+        response_status=200,
+        response_body={"partner_id": str(partner.id)},
+    )
     return PartnerMutationResult(partner=partner)
 
 
@@ -266,11 +272,13 @@ def archive_partner(
     key = _validate_key(idempotency_key)
     request_payload = {"partner_id": str(partner_id), "expected_version": expected_version}
     request_hash = _request_hash(request_payload)
-    existing = _find_idempotency_record(db, principal, key, request_hash, "partner.archive")
-    if existing is not None:
-        return existing
+    claim = _claim(db, principal, key, "partner.archive", request_hash)
+    if claim.replayed:
+        return _existing_partner_result(
+            db, principal, claim.record, request_hash, "partner.archive"
+        )
 
-    partner = get_partner(db, partner_id, principal)
+    partner = get_partner(db, partner_id, principal, for_update=True)
     if partner.version != expected_version:
         raise PartnerDomainError("partner version does not match; reload before archiving")
     if not partner.is_active:
@@ -280,7 +288,13 @@ def archive_partner(
     partner.updated_at = datetime.now(UTC)
     db.flush()
     _create_audit(db, principal, partner, "partner.archive", {"version": partner.version})
-    _store_idempotency(db, principal, key, "partner.archive", request_hash, partner)
+    complete_idempotency(
+        db,
+        claim,
+        resource_id=partner.id,
+        response_status=200,
+        response_body={"partner_id": str(partner.id)},
+    )
     return PartnerMutationResult(partner=partner)
 
 

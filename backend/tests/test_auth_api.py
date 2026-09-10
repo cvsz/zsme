@@ -85,3 +85,17 @@ def test_login_does_not_persist_raw_token(client: TestClient, db_session, seeded
 
     assert stored is not None
     assert stored.token_hash != raw_token
+
+
+def test_login_rate_limit_blocks_repeated_failures(client: TestClient, seeded_user) -> None:
+    payload = {
+        "tenant_slug": seeded_user.tenant.slug,
+        "email": seeded_user.email,
+        "password": "wrong password",
+    }
+
+    responses = [client.post("/v1/auth/login", json=payload) for _ in range(5)]
+
+    assert [response.status_code for response in responses[:4]] == [401, 401, 401, 401]
+    assert responses[4].status_code == 429
+    assert responses[4].headers["Retry-After"]

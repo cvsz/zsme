@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -106,6 +107,22 @@ class SessionToken(IdentifiedTimestampMixin, TenantScopeMixin, Base):
     user: Mapped[User] = relationship(back_populates="sessions")
 
 
+class LoginThrottle(IdentifiedTimestampMixin, Base):
+    """Durable, privacy-preserving login abuse state shared by API instances."""
+
+    __tablename__ = "login_throttles"
+    __table_args__ = (
+        CheckConstraint("failed_attempts >= 0", name="ck_login_throttles_failures"),
+        UniqueConstraint("bucket_key", name="uq_login_throttles_bucket"),
+    )
+
+    bucket_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    failed_attempts: Mapped[int] = mapped_column(default=0, server_default="0", nullable=False)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    blocked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AuditEvent(IdentifiedTimestampMixin, TenantScopeMixin, Base):
     __tablename__ = "audit_events"
     __table_args__ = (
@@ -114,7 +131,10 @@ class AuditEvent(IdentifiedTimestampMixin, TenantScopeMixin, Base):
     )
 
     organization_id: Mapped[UUID | None] = mapped_column(
-        Uuid(as_uuid=True), nullable=True, index=True
+        Uuid(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     actor_user_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -142,7 +162,12 @@ class IdempotencyRecord(IdentifiedTimestampMixin, TenantScopeMixin, Base):
         ),
     )
 
-    organization_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    organization_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     key: Mapped[str] = mapped_column(String(200), nullable=False)
     operation: Mapped[str] = mapped_column(String(150), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -154,6 +179,7 @@ class IdempotencyRecord(IdentifiedTimestampMixin, TenantScopeMixin, Base):
 __all__ = [
     "AuditEvent",
     "IdempotencyRecord",
+    "LoginThrottle",
     "Organization",
     "Role",
     "SessionToken",

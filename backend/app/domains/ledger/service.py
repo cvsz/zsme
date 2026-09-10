@@ -1,15 +1,21 @@
 from __future__ import annotations
 
-import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
+from app.core.idempotency import (
+    IdempotencyClaim,
+    IdempotencyError,
+    claim_idempotency,
+    complete_idempotency,
+    request_hash,
+)
 from app.db.models import (
     AuditEvent,
     ChartAccount,
@@ -115,20 +121,40 @@ def list_journal_entries(
 
 
 def _request_hash(command: JournalPostCommand) -> str:
-    serialized = json.dumps(
-        command.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-    )
-    return sha256(serialized.encode("utf-8")).hexdigest()
+    return request_hash(command.model_dump(mode="json"))
+
+
+def _claim(
+    db: Session,
+    principal: Principal,
+    key: str,
+    operation: str,
+    request_hash_value: str,
+) -> IdempotencyClaim:
+    try:
+        return claim_idempotency(
+            db,
+            tenant_id=principal.tenant_id,
+            organization_id=principal.organization_id,
+            key=key,
+            operation=operation,
+            request_hash=request_hash_value,
+        )
+    except IdempotencyError as error:
+        raise DomainError(str(error)) from error
 
 
 def _existing_result(record: IdempotencyRecord) -> JournalPostResult:
     body = record.response_body
-    return JournalPostResult(
-        entry_id=UUID(str(body["entry_id"])),
-        status="already_posted",
-        total=body["total"],
-        audit_event_id=UUID(str(body["audit_event_id"])),
-    )
+    try:
+        return JournalPostResult(
+            entry_id=UUID(str(body["entry_id"])),
+            status="already_posted",
+            total=body["total"],
+            audit_event_id=UUID(str(body["audit_event_id"])),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise DomainError("idempotency record contains an invalid journal response") from error
 
 
 def post_journal_entry(
@@ -143,18 +169,16 @@ def post_journal_entry(
     if not normalized_key or len(normalized_key) > 200:
         raise DomainError("a valid idempotency key is required")
 
-    request_hash = _request_hash(command)
-    existing = db.scalar(
-        select(IdempotencyRecord).where(
-            IdempotencyRecord.tenant_id == principal.tenant_id,
-            IdempotencyRecord.organization_id == principal.organization_id,
-            IdempotencyRecord.key == normalized_key,
-        )
+    request_hash_value = _request_hash(command)
+    claim = _claim(
+        db,
+        principal,
+        normalized_key,
+        "journal.post",
+        request_hash_value,
     )
-    if existing is not None:
-        if existing.request_hash != request_hash:
-            raise DomainError("idempotency key was reused with a different request")
-        return _existing_result(existing)
+    if claim.replayed:
+        return _existing_result(claim.record)
 
     period = db.scalar(
         select(FiscalPeriod)
@@ -164,6 +188,7 @@ def post_journal_entry(
             FiscalPeriod.start_date <= command.journal_date,
             FiscalPeriod.end_date >= command.journal_date,
         )
+        .with_for_update()
         .order_by(FiscalPeriod.start_date.desc())
     )
     if period is None:
@@ -171,7 +196,7 @@ def post_journal_entry(
     if period.status != "open":
         raise DomainError("period is locked")
 
-    account_codes = {line.account_code for line in command.lines}
+    account_codes = {line.account_code.strip().upper() for line in command.lines}
     accounts = db.scalars(
         select(ChartAccount).where(
             ChartAccount.tenant_id == principal.tenant_id,
@@ -190,82 +215,113 @@ def post_journal_entry(
     if control_accounts:
         raise DomainError(f"control account cannot receive posting: {', '.join(control_accounts)}")
 
-    now = datetime.now(UTC)
-    entry = JournalEntryRecord(
-        tenant_id=principal.tenant_id,
-        organization_id=principal.organization_id,
-        fiscal_period_id=period.id,
-        reference=command.reference,
-        journal_date=command.journal_date,
-        memo=command.memo,
-        status="posted",
-        source_type=command.source_type,
-        source_id=command.source_id,
-        idempotency_key=normalized_key,
-        reversal_of_id=command.reversal_of_id,
-        posted_at=now,
-    )
-    db.add(entry)
-    db.flush()
+    if db.scalar(
+        select(JournalEntryRecord.id).where(
+            JournalEntryRecord.tenant_id == principal.tenant_id,
+            JournalEntryRecord.organization_id == principal.organization_id,
+            JournalEntryRecord.reference == command.reference,
+        )
+    ) is not None:
+        raise DomainError("journal reference already exists in this organization")
+    if command.source_id is not None and db.scalar(
+        select(JournalEntryRecord.id).where(
+            JournalEntryRecord.tenant_id == principal.tenant_id,
+            JournalEntryRecord.organization_id == principal.organization_id,
+            JournalEntryRecord.source_type == command.source_type,
+            JournalEntryRecord.source_id == command.source_id,
+        )
+    ) is not None:
+        raise DomainError("a journal entry already exists for this source")
+    if command.reversal_of_id is not None:
+        original = db.scalar(
+            select(JournalEntryRecord)
+            .where(
+                JournalEntryRecord.id == command.reversal_of_id,
+                JournalEntryRecord.tenant_id == principal.tenant_id,
+                JournalEntryRecord.organization_id == principal.organization_id,
+            )
+            .with_for_update()
+        )
+        if original is None or original.status != "posted":
+            raise DomainError("reversal source journal entry was not found or is not posted")
 
-    for line_no, line in enumerate(command.lines, start=1):
-        db.add(
-            JournalLineRecord(
+    now = datetime.now(UTC)
+    try:
+        with db.begin_nested():
+            entry = JournalEntryRecord(
                 tenant_id=principal.tenant_id,
                 organization_id=principal.organization_id,
-                entry_id=entry.id,
-                account_id=accounts_by_code[line.account_code].id,
-                line_no=line_no,
-                account_code=line.account_code,
-                debit=line.debit,
-                credit=line.credit,
-                memo=line.memo,
+                fiscal_period_id=period.id,
+                reference=command.reference,
+                journal_date=command.journal_date,
+                memo=command.memo,
+                status="posted",
+                source_type=command.source_type,
+                source_id=command.source_id,
+                idempotency_key=normalized_key,
+                reversal_of_id=command.reversal_of_id,
+                posted_at=now,
             )
-        )
-    db.flush()
+            db.add(entry)
+            db.flush()
 
-    audit = AuditEvent(
-        tenant_id=principal.tenant_id,
-        organization_id=principal.organization_id,
-        actor_user_id=principal.user_id,
-        action="journal.post",
-        entity_type="journal_entry",
-        entity_id=entry.id,
-        correlation_id=str(uuid4()),
-        payload={
-            "reference": entry.reference,
-            "source_type": entry.source_type,
-            "source_id": str(entry.source_id) if entry.source_id else None,
-            "line_count": len(command.lines),
-        },
-    )
-    db.add(audit)
-    db.flush()
+            for line_no, line in enumerate(command.lines, start=1):
+                account_code = line.account_code.strip().upper()
+                db.add(
+                    JournalLineRecord(
+                        tenant_id=principal.tenant_id,
+                        organization_id=principal.organization_id,
+                        entry_id=entry.id,
+                        account_id=accounts_by_code[account_code].id,
+                        line_no=line_no,
+                        account_code=account_code,
+                        debit=line.debit,
+                        credit=line.credit,
+                        memo=line.memo,
+                    )
+                )
+            db.flush()
 
-    total = sum((line.debit for line in command.lines), start=Decimal("0"))
-    result = JournalPostResult(
-        entry_id=entry.id,
-        status="posted",
-        total=total,
-        audit_event_id=audit.id,
-    )
-    db.add(
-        IdempotencyRecord(
-            tenant_id=principal.tenant_id,
-            organization_id=principal.organization_id,
-            key=normalized_key,
-            operation="journal.post",
-            request_hash=request_hash,
-            response_status=201,
-            response_body={
-                "entry_id": str(result.entry_id),
-                "total": str(result.total),
-                "audit_event_id": str(result.audit_event_id),
-            },
-            resource_id=result.entry_id,
-        )
-    )
-    db.flush()
+            audit = AuditEvent(
+                tenant_id=principal.tenant_id,
+                organization_id=principal.organization_id,
+                actor_user_id=principal.user_id,
+                action="journal.post",
+                entity_type="journal_entry",
+                entity_id=entry.id,
+                correlation_id=principal.correlation_id or str(uuid4()),
+                payload={
+                    "reference": entry.reference,
+                    "source_type": entry.source_type,
+                    "source_id": str(entry.source_id) if entry.source_id else None,
+                    "line_count": len(command.lines),
+                },
+            )
+            db.add(audit)
+            db.flush()
+
+            total = sum((line.debit for line in command.lines), start=Decimal("0"))
+            result = JournalPostResult(
+                entry_id=entry.id,
+                status="posted",
+                total=total,
+                audit_event_id=audit.id,
+            )
+            complete_idempotency(
+                db,
+                claim,
+                resource_id=result.entry_id,
+                response_status=201,
+                response_body={
+                    "entry_id": str(result.entry_id),
+                    "total": str(result.total),
+                    "audit_event_id": str(result.audit_event_id),
+                },
+            )
+    except IntegrityError as error:
+        db.delete(claim.record)
+        db.flush()
+        raise DomainError("journal reference or source already exists") from error
     return result
 
 
@@ -277,12 +333,30 @@ def reverse_journal_entry(
 ) -> JournalPostResult:
     if principal.organization_id is None:
         raise DomainError("an organization is required for ledger reversal")
+    normalized_key = idempotency_key.strip()
+    if not normalized_key or len(normalized_key) > 200:
+        raise DomainError("a valid idempotency key is required")
+    reverse_hash = request_hash(
+        {"operation": "journal.reverse", "entry_id": str(entry_id)}
+    )
+    claim = _claim(
+        db,
+        principal,
+        normalized_key,
+        "journal.reverse",
+        reverse_hash,
+    )
+    if claim.replayed:
+        return _existing_result(claim.record)
+
     original = db.scalar(
-        select(JournalEntryRecord).where(
+        select(JournalEntryRecord)
+        .where(
             JournalEntryRecord.id == entry_id,
             JournalEntryRecord.tenant_id == principal.tenant_id,
             JournalEntryRecord.organization_id == principal.organization_id,
         )
+        .with_for_update()
     )
     if original is None:
         raise DomainError("journal entry not found")
@@ -291,7 +365,11 @@ def reverse_journal_entry(
     if original.reversal_of_id is not None:
         raise DomainError("a reversal entry cannot be reversed")
     if db.scalar(
-        select(JournalEntryRecord.id).where(JournalEntryRecord.reversal_of_id == original.id)
+        select(JournalEntryRecord.id).where(
+            JournalEntryRecord.reversal_of_id == original.id,
+            JournalEntryRecord.tenant_id == principal.tenant_id,
+            JournalEntryRecord.organization_id == principal.organization_id,
+        )
     ):
         raise DomainError("journal entry has already been reversed")
 
@@ -314,7 +392,24 @@ def reverse_journal_entry(
             for line in original.lines
         ],
     )
-    return post_journal_entry(db, command, principal, idempotency_key)
+    result = post_journal_entry(
+        db,
+        command,
+        principal,
+        f"journal-reversal:{original.id}",
+    )
+    complete_idempotency(
+        db,
+        claim,
+        resource_id=result.entry_id,
+        response_status=201,
+        response_body={
+            "entry_id": str(result.entry_id),
+            "total": str(result.total),
+            "audit_event_id": str(result.audit_event_id),
+        },
+    )
+    return result
 
 
 __all__ = ["DomainError", "list_journal_entries", "post_journal_entry", "reverse_journal_entry"]

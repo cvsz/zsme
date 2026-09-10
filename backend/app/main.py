@@ -17,6 +17,7 @@ from app.domains.partners.api import router as partners_router
 from app.domains.payments.api import router as payments_router
 from app.domains.reports.api import router as reports_router
 from app.domains.tax.api import router as tax_router
+from app.observability.logging import configure_logging
 
 app = FastAPI(
     title="ZSME Accounting API",
@@ -24,6 +25,7 @@ app = FastAPI(
     description="Thailand-first SME accounting API with double-entry accounting invariants.",
 )
 
+configure_logging()
 register_exception_handlers(app)
 cors_origins = get_settings().cors_origin_list
 if cors_origins:

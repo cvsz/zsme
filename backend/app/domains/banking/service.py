@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -12,13 +10,19 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import Principal
+from app.core.idempotency import (
+    IdempotencyClaim,
+    IdempotencyError,
+    claim_idempotency,
+    complete_idempotency,
+    request_hash,
+)
 from app.db.models import (
     AuditEvent,
     BankAccount,
     BankImportBatch,
     BankTransaction,
     ChartAccount,
-    IdempotencyRecord,
     PaymentRecord,
 )
 from app.domains.banking.schemas import BankAccountCreate, BankImportCreate, BankTransactionStatus
@@ -49,8 +53,7 @@ class BankTransactionMutationResult:
 
 
 def _hash(payload: object) -> str:
-    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return sha256(serialized.encode("utf-8")).hexdigest()
+    return request_hash(payload)
 
 
 def _key(value: str) -> str:
@@ -66,14 +69,24 @@ def _org(principal: Principal) -> UUID:
     return principal.organization_id
 
 
-def _record(db: Session, principal: Principal, key: str) -> IdempotencyRecord | None:
-    return db.scalar(
-        select(IdempotencyRecord).where(
-            IdempotencyRecord.tenant_id == principal.tenant_id,
-            IdempotencyRecord.organization_id == principal.organization_id,
-            IdempotencyRecord.key == key,
+def _claim(
+    db: Session,
+    principal: Principal,
+    key: str,
+    operation: str,
+    request_hash_value: str,
+) -> IdempotencyClaim:
+    try:
+        return claim_idempotency(
+            db,
+            tenant_id=principal.tenant_id,
+            organization_id=principal.organization_id,
+            key=key,
+            operation=operation,
+            request_hash=request_hash_value,
         )
-    )
+    except IdempotencyError as error:
+        raise BankingDomainError(str(error)) from error
 
 
 def _account_query(principal: Principal):
@@ -141,37 +154,12 @@ def _audit(
         action=action,
         entity_type=entity_type,
         entity_id=entity_id,
-        correlation_id=str(uuid4()),
+        correlation_id=principal.correlation_id or str(uuid4()),
         payload=payload,
     )
     db.add(audit)
     db.flush()
     return audit
-
-
-def _store(
-    db: Session,
-    principal: Principal,
-    key: str,
-    operation: str,
-    request_hash: str,
-    resource_id: UUID,
-    response_status: int,
-    resource_key: str,
-) -> None:
-    db.add(
-        IdempotencyRecord(
-            tenant_id=principal.tenant_id,
-            organization_id=principal.organization_id,
-            key=key,
-            operation=operation,
-            request_hash=request_hash,
-            response_status=response_status,
-            response_body={resource_key: str(resource_id)},
-            resource_id=resource_id,
-        )
-    )
-    db.flush()
 
 
 def list_accounts(
@@ -198,14 +186,12 @@ def create_account(
     request_hash = _hash(
         {"operation": "bank_account.create", "payload": payload.model_dump(mode="json")}
     )
-    existing = _record(db, principal, key)
-    if existing is not None:
-        if existing.operation != "bank_account.create" or existing.request_hash != request_hash:
-            raise BankingDomainError("idempotency key was reused with a different request")
-        if existing.resource_id is None:
+    claim = _claim(db, principal, key, "bank_account.create", request_hash)
+    if claim.replayed:
+        if claim.record.resource_id is None:
             raise BankingDomainError("idempotency record has no bank account resource")
         return BankAccountMutationResult(
-            _get_account(db, principal, existing.resource_id), replayed=True
+            _get_account(db, principal, claim.record.resource_id), replayed=True
         )
 
     ledger_code = payload.ledger_account_code.strip().upper()
@@ -242,30 +228,32 @@ def create_account(
         ledger_account_code=ledger_code,
         is_active=True,
     )
-    db.add(account)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(account)
+            db.flush()
+            _audit(
+                db,
+                principal,
+                "bank_account",
+                account.id,
+                "bank_account.create",
+                {
+                    "account_code": account.account_code,
+                    "ledger_account_code": account.ledger_account_code,
+                },
+            )
+            complete_idempotency(
+                db,
+                claim,
+                resource_id=account.id,
+                response_status=201,
+                response_body={"bank_account_id": str(account.id)},
+            )
     except IntegrityError as error:
-        db.rollback()
+        db.delete(claim.record)
+        db.flush()
         raise BankingDomainError("bank account code already exists in this organization") from error
-    _audit(
-        db,
-        principal,
-        "bank_account",
-        account.id,
-        "bank_account.create",
-        {"account_code": account.account_code, "ledger_account_code": account.ledger_account_code},
-    )
-    _store(
-        db,
-        principal,
-        key,
-        "bank_account.create",
-        request_hash,
-        account.id,
-        201,
-        "bank_account_id",
-    )
     return BankAccountMutationResult(account)
 
 
@@ -288,14 +276,12 @@ def import_transactions(
             "payload": payload.model_dump(mode="json"),
         }
     )
-    existing = _record(db, principal, key)
-    if existing is not None:
-        if existing.operation != "bank.import" or existing.request_hash != request_hash:
-            raise BankingDomainError("idempotency key was reused with a different request")
-        if existing.resource_id is None:
+    claim = _claim(db, principal, key, "bank.import", request_hash)
+    if claim.replayed:
+        if claim.record.resource_id is None:
             raise BankingDomainError("idempotency record has no bank import resource")
         return BankImportMutationResult(
-            _get_batch(db, principal, existing.resource_id), replayed=True
+            _get_batch(db, principal, claim.record.resource_id), replayed=True
         )
 
     normalized_ids = [item.external_id.strip() for item in payload.transactions]
@@ -336,34 +322,33 @@ def import_transactions(
             for item, external_id in zip(payload.transactions, normalized_ids, strict=True)
         ],
     )
-    db.add(batch)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(batch)
+            db.flush()
+            _audit(
+                db,
+                principal,
+                "bank_import_batch",
+                batch.id,
+                "bank.import",
+                {
+                    "bank_account_id": str(account.id),
+                    "batch_reference": batch.batch_reference,
+                    "transaction_count": batch.transaction_count,
+                },
+            )
+            complete_idempotency(
+                db,
+                claim,
+                resource_id=batch.id,
+                response_status=201,
+                response_body={"bank_import_id": str(batch.id)},
+            )
     except IntegrityError as error:
-        db.rollback()
+        db.delete(claim.record)
+        db.flush()
         raise BankingDomainError("bank import batch or external_id already exists") from error
-    _audit(
-        db,
-        principal,
-        "bank_import_batch",
-        batch.id,
-        "bank.import",
-        {
-            "bank_account_id": str(account.id),
-            "batch_reference": batch.batch_reference,
-            "transaction_count": batch.transaction_count,
-        },
-    )
-    _store(
-        db,
-        principal,
-        key,
-        "bank.import",
-        request_hash,
-        batch.id,
-        201,
-        "bank_import_id",
-    )
     return BankImportMutationResult(batch)
 
 
@@ -410,17 +395,26 @@ def reconcile_transaction(
             "payment_id": str(payment_id),
         }
     )
-    existing = _record(db, principal, key)
-    if existing is not None:
-        if existing.operation != "bank.reconcile" or existing.request_hash != request_hash:
-            raise BankingDomainError("idempotency key was reused with a different request")
-        if existing.resource_id is None:
+    claim = _claim(db, principal, key, "bank.reconcile", request_hash)
+    if claim.replayed:
+        if claim.record.resource_id is None:
             raise BankingDomainError("idempotency record has no bank transaction resource")
         return BankTransactionMutationResult(
-            _get_transaction(db, principal, existing.resource_id), replayed=True
+            _get_transaction(db, principal, claim.record.resource_id), replayed=True
         )
 
-    transaction = _get_transaction(db, principal, transaction_id)
+    transaction = db.scalar(
+        select(BankTransaction)
+        .options(selectinload(BankTransaction.bank_account))
+        .where(
+            BankTransaction.id == transaction_id,
+            BankTransaction.tenant_id == principal.tenant_id,
+            BankTransaction.organization_id == organization_id,
+        )
+        .with_for_update()
+    )
+    if transaction is None:
+        raise BankingDomainError("bank transaction not found")
     if transaction.status != "unmatched":
         raise BankingDomainError("bank transaction is already reconciled")
     payment = db.scalar(
@@ -428,7 +422,7 @@ def reconcile_transaction(
             PaymentRecord.id == payment_id,
             PaymentRecord.tenant_id == principal.tenant_id,
             PaymentRecord.organization_id == organization_id,
-        )
+        ).with_for_update()
     )
     if payment is None or payment.status != "posted":
         raise BankingDomainError("only a posted payment in this organization can be reconciled")
@@ -460,15 +454,12 @@ def reconcile_transaction(
             "transaction_date": transaction.transaction_date.isoformat(),
         },
     )
-    _store(
+    complete_idempotency(
         db,
-        principal,
-        key,
-        "bank.reconcile",
-        request_hash,
-        transaction.id,
-        200,
-        "bank_transaction_id",
+        claim,
+        resource_id=transaction.id,
+        response_status=200,
+        response_body={"bank_transaction_id": str(transaction.id)},
     )
     return BankTransactionMutationResult(transaction)
 

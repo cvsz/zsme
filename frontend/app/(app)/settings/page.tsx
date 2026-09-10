@@ -9,6 +9,7 @@ import {
   checkApiHealth,
   getApiBaseUrl,
   getServerApiBaseUrl,
+  isApiEndpointUserConfigurable,
   isApiBaseUrlManaged,
   setApiBaseUrl,
   subscribeToApiBaseUrl,
@@ -24,6 +25,7 @@ export default function SettingsPage() {
   );
   const [draftEndpoint, setDraftEndpoint] = useState<string | undefined>(undefined);
   const environmentManaged = isApiBaseUrlManaged();
+  const endpointUserConfigurable = isApiEndpointUserConfigurable();
   const [connectionState, setConnectionState] = useState<ConnectionState>(environmentManaged ? "managed" : "idle");
   const endpoint = draftEndpoint ?? configuredEndpoint;
 
@@ -81,8 +83,8 @@ export default function SettingsPage() {
         <form className="form-grid" onSubmit={handleSaveConnection}>
           <div className="field">
             <label htmlFor="api-endpoint">API endpoint</label>
-            <input id="api-endpoint" name="api-endpoint" type="url" value={endpoint} onChange={(event) => setDraftEndpoint(event.target.value)} placeholder="https://api.example.com" readOnly={environmentManaged} />
-            <small>{environmentManaged ? "This endpoint is supplied by the deployment environment." : "Use an HTTPS endpoint for production traffic."}</small>
+            <input id="api-endpoint" name="api-endpoint" type="url" value={endpoint} onChange={(event) => setDraftEndpoint(event.target.value)} placeholder="https://api.example.com" readOnly={!endpointUserConfigurable} />
+            <small>{endpointUserConfigurable ? "Use an HTTPS endpoint for production traffic." : "This endpoint is supplied by the deployment environment; browser overrides are disabled."}</small>
           </div>
           <div className="field">
             <label htmlFor="workspace-slug">Workspace slug</label>
@@ -90,7 +92,7 @@ export default function SettingsPage() {
             <small>Tenant selection is resolved by server-side authorization.</small>
           </div>
           <div className="page-actions">
-            <button className="button button-primary" type="submit" disabled={environmentManaged}><Save size={15} aria-hidden="true" /> Save connection</button>
+            <button className="button button-primary" type="submit" disabled={!endpointUserConfigurable}><Save size={15} aria-hidden="true" /> Save connection</button>
             <button className="button button-secondary" type="button" onClick={handleTestConnection} disabled={!endpoint.trim() || connectionState === "checking"}><ServerCog size={15} aria-hidden="true" /> Test connection</button>
             <StatusBadge tone={connectionTone}>{connectionLabel}</StatusBadge>
           </div>
@@ -109,7 +111,7 @@ export default function SettingsPage() {
             <li><Database size={16} aria-hidden="true" /> Journal records are append-only after posting.</li>
           </ul>
         </section>
-        <section className="panel" aria-labelledby="access-title">
+        <section className="panel" id="access" aria-labelledby="access-title">
           <div className="section-heading">
             <h2 id="access-title">Access administration</h2>
             <p>People and role assignments will be managed here.</p>

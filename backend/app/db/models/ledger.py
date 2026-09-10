@@ -10,12 +10,15 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Numeric,
     String,
     UniqueConstraint,
     Uuid,
     event,
+    text,
 )
+from sqlalchemy import inspect as sqlalchemy_inspect
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -77,6 +80,15 @@ class JournalEntryRecord(IdentifiedTimestampMixin, OrganizationScopeMixin, Base)
         UniqueConstraint(
             "organization_id", "idempotency_key", name="uq_journal_entries_org_idempotency"
         ),
+        Index(
+            "uq_journal_entries_org_source",
+            "organization_id",
+            "source_type",
+            "source_id",
+            unique=True,
+            postgresql_where=text("source_id IS NOT NULL"),
+            sqlite_where=text("source_id IS NOT NULL"),
+        ),
     )
 
     fiscal_period_id: Mapped[UUID | None] = mapped_column(
@@ -132,7 +144,11 @@ class JournalLineRecord(IdentifiedTimestampMixin, OrganizationScopeMixin, Base):
 @event.listens_for(JournalEntryRecord, "before_update")
 @event.listens_for(JournalEntryRecord, "before_delete")
 def prevent_posted_entry_mutation(_mapper, _connection, target: JournalEntryRecord) -> None:
-    if target.status == "posted":
+    history = sqlalchemy_inspect(target).attrs.status.history
+    previous_status = history.deleted[0] if history.deleted else (
+        history.unchanged[0] if history.unchanged else None
+    )
+    if previous_status == "posted":
         raise ValueError("posted journal entries are immutable")
 
 

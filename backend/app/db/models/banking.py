@@ -156,8 +156,11 @@ def prevent_bank_transaction_source_mutation(_mapper, _connection, target: BankT
     state = sqlalchemy_inspect(target)
     if any(state.attrs[field].history.has_changes() for field in _SOURCE_FIELDS):
         raise ValueError("imported bank transaction source fields are immutable")
-    previous_status = state.attrs.status.history.deleted
-    if previous_status and previous_status[0] == "reconciled":
+    status_history = state.attrs.status.history
+    previous_status = status_history.deleted[0] if status_history.deleted else (
+        status_history.unchanged[0] if status_history.unchanged else None
+    )
+    if previous_status == "reconciled":
         if target.status != "reconciled" or any(
             state.attrs[field].history.has_changes()
             for field in ("matched_payment_id", "reconciled_at")
@@ -185,8 +188,11 @@ def prevent_bank_import_delete(_mapper, _connection, _target: BankImportBatch) -
 
 @event.listens_for(BankImportBatch, "before_update")
 def prevent_committed_bank_import_mutation(_mapper, _connection, target: BankImportBatch) -> None:
-    previous_status = sqlalchemy_inspect(target).attrs.status.history.deleted
-    if previous_status and previous_status[0] == "committed":
+    history = sqlalchemy_inspect(target).attrs.status.history
+    previous_status = history.deleted[0] if history.deleted else (
+        history.unchanged[0] if history.unchanged else None
+    )
+    if previous_status == "committed":
         raise ValueError("committed bank import batches are immutable")
 
 
