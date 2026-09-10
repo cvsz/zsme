@@ -32,9 +32,15 @@ if cors_origins:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Correlation-ID",
+            "X-CSRF-Token",
+        ],
         expose_headers=["X-Correlation-ID"],
     )
 app.include_router(auth_router)

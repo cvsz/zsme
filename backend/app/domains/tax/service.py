@@ -16,6 +16,7 @@ from app.core.idempotency import (
     complete_idempotency,
     request_hash,
 )
+from app.core.pagination import Page
 from app.db.models import AuditEvent, Organization, TaxRateRule
 from app.domains.tax.schemas import TaxRateCreate, TaxType
 
@@ -138,13 +139,15 @@ def create_rate(
 
     rules = list(
         db.scalars(
-            select(TaxRateRule).where(
+            select(TaxRateRule)
+            .where(
                 TaxRateRule.tenant_id == principal.tenant_id,
                 TaxRateRule.organization_id == organization_id,
                 TaxRateRule.tax_type == payload.tax_type,
                 TaxRateRule.code == payload.code.strip().upper(),
                 TaxRateRule.is_active.is_(True),
-            ).with_for_update()
+            )
+            .with_for_update()
         ).all()
     )
     if any(_overlaps(rule, payload) for rule in rules):
@@ -180,8 +183,13 @@ def create_rate(
 
 
 def list_rates(
-    db: Session, principal: Principal, tax_type: TaxType | None = None
-) -> list[TaxRateRule]:
+    db: Session,
+    principal: Principal,
+    tax_type: TaxType | None = None,
+    *,
+    limit: int,
+    offset: int,
+) -> Page[TaxRateRule]:
     organization_id = _org(principal)
     statement = select(TaxRateRule).where(
         TaxRateRule.tenant_id == principal.tenant_id,
@@ -190,13 +198,16 @@ def list_rates(
     )
     if tax_type is not None:
         statement = statement.where(TaxRateRule.tax_type == tax_type)
-    return list(
+    items = list(
         db.scalars(
             statement.order_by(
                 TaxRateRule.tax_type, TaxRateRule.code, TaxRateRule.effective_from.desc()
             )
+            .offset(offset)
+            .limit(limit + 1)
         ).all()
     )
+    return Page(items=items[:limit], has_more=len(items) > limit)
 
 
 def effective_rate(

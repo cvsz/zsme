@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from hmac import compare_digest
 from secrets import token_urlsafe
 from typing import Annotated
 from uuid import UUID
@@ -14,6 +15,10 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models import SessionToken, User
 from app.db.session import get_session
+
+AUTH_COOKIE_NAME = "zsme_session"
+CSRF_COOKIE_NAME = "zsme_csrf"
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
 @dataclass(frozen=True)
@@ -33,17 +38,36 @@ def _token_hash(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_session(db: Session, user: User) -> str:
+def create_session(db: Session, user: User) -> tuple[str, str]:
     raw_token = token_urlsafe(48)
+    csrf_token = token_urlsafe(32)
     session = SessionToken(
         tenant_id=user.tenant_id,
         user_id=user.id,
         token_hash=_token_hash(raw_token),
+        csrf_token_hash=_token_hash(csrf_token),
         expires_at=datetime.now(UTC) + timedelta(minutes=get_settings().access_token_ttl_minutes),
     )
     db.add(session)
     db.flush()
-    return raw_token
+    return raw_token, csrf_token
+
+
+def refresh_csrf_token(db: Session, principal: Principal) -> str:
+    session = db.scalar(
+        select(SessionToken).where(
+            SessionToken.id == principal.session_id,
+            SessionToken.tenant_id == principal.tenant_id,
+            SessionToken.user_id == principal.user_id,
+            SessionToken.revoked_at.is_(None),
+        )
+    )
+    if session is None:
+        raise _unauthorized()
+    csrf_token = token_urlsafe(32)
+    session.csrf_token_hash = _token_hash(csrf_token)
+    db.flush()
+    return csrf_token
 
 
 def _unauthorized() -> HTTPException:
@@ -59,7 +83,12 @@ def get_current_principal(
 ) -> Principal:
     authorization = request.headers.get("Authorization", "")
     scheme, _, raw_token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not raw_token:
+    using_bearer = scheme.lower() == "bearer" and bool(raw_token.strip())
+    if using_bearer:
+        raw_token = raw_token.strip()
+    else:
+        raw_token = request.cookies.get(AUTH_COOKIE_NAME, "").strip()
+    if not raw_token:
         raise _unauthorized()
 
     session = db.scalar(
@@ -69,6 +98,18 @@ def get_current_principal(
     )
     if session is None:
         raise _unauthorized()
+
+    if not using_bearer and request.method.upper() not in _SAFE_METHODS:
+        csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
+        csrf_header = request.headers.get("X-CSRF-Token", "")
+        if (
+            not csrf_cookie
+            or not csrf_header
+            or not compare_digest(csrf_cookie, csrf_header)
+            or not session.csrf_token_hash
+            or not compare_digest(_token_hash(csrf_header), session.csrf_token_hash)
+        ):
+            raise HTTPException(status_code=403, detail="CSRF validation failed")
 
     now = datetime.now(UTC)
     expires_at = session.expires_at
@@ -81,10 +122,7 @@ def get_current_principal(
         or session.tenant_id != user.tenant_id
         or user.tenant.status != "active"
         or (user.organization_id is not None and user.organization is None)
-        or (
-            user.organization is not None
-            and user.organization.tenant_id != user.tenant_id
-        )
+        or (user.organization is not None and user.organization.tenant_id != user.tenant_id)
     ):
         raise _unauthorized()
 
@@ -137,9 +175,12 @@ def require_permission(permission: str):
 
 
 __all__ = [
+    "AUTH_COOKIE_NAME",
+    "CSRF_COOKIE_NAME",
     "Principal",
     "create_session",
     "get_current_principal",
     "require_permission",
+    "refresh_csrf_token",
     "revoke_session",
 ]

@@ -140,7 +140,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
   const closeSearchRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!configuredEndpoint || !getAccessToken()) {
+    if (!configuredEndpoint) {
       return undefined;
     }
     let isMounted = true;

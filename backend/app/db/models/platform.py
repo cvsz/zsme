@@ -101,6 +101,7 @@ class SessionToken(IdentifiedTimestampMixin, TenantScopeMixin, Base):
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    csrf_token_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

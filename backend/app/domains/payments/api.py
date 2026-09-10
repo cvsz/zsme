@@ -9,6 +9,12 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import ApReadDep, ApWriteDep, ArReadDep, ArWriteDep, SessionDep
+from app.core.pagination import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_OFFSET,
+    MAX_PAGE_SIZE,
+    set_page_headers,
+)
 from app.domains.payments.schemas import PaymentCreate, PaymentRead, PaymentStatus
 from app.domains.payments.service import (
     PaymentDomainError,
@@ -41,9 +47,21 @@ def _response(payment, response_status: int) -> JSONResponse:
 def get_receipts(
     principal: ArReadDep,
     db: SessionDep,
+    response: Response,
     payment_status: Annotated[PaymentStatus | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0, le=MAX_PAGE_OFFSET)] = 0,
 ) -> list[PaymentRead]:
-    return list_payments(db, principal, "receipt", status=payment_status)
+    page = list_payments(
+        db,
+        principal,
+        "receipt",
+        status=payment_status,
+        limit=limit,
+        offset=offset,
+    )
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.post("/ar/receipts", response_model=PaymentRead, status_code=status.HTTP_201_CREATED)
@@ -78,9 +96,21 @@ def post_receipt_payment(
 def get_disbursements(
     principal: ApReadDep,
     db: SessionDep,
+    response: Response,
     payment_status: Annotated[PaymentStatus | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0, le=MAX_PAGE_OFFSET)] = 0,
 ) -> list[PaymentRead]:
-    return list_payments(db, principal, "disbursement", status=payment_status)
+    page = list_payments(
+        db,
+        principal,
+        "disbursement",
+        status=payment_status,
+        limit=limit,
+        offset=offset,
+    )
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.post("/ap/disbursements", response_model=PaymentRead, status_code=status.HTTP_201_CREATED)

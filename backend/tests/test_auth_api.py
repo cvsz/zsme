@@ -31,6 +31,41 @@ def test_login_returns_opaque_token(client: TestClient, seeded_user) -> None:
     assert response.status_code == 200
     assert response.json()["token_type"] == "bearer"
     assert len(response.json()["access_token"]) >= 32
+    assert len(response.json()["csrf_token"]) >= 32
+
+
+def test_login_establishes_cookie_session_and_cookie_mutations_require_csrf(
+    client: TestClient, seeded_user
+) -> None:
+    login = client.post(
+        "/v1/auth/login",
+        json={
+            "tenant_slug": seeded_user.tenant.slug,
+            "email": seeded_user.email,
+            "password": "correct horse battery staple",
+        },
+    )
+
+    assert login.status_code == 200
+    set_cookie = login.headers["set-cookie"]
+    assert "zsme_session=" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "zsme_csrf=" in set_cookie
+    assert client.cookies.get("zsme_csrf")
+
+    me = client.get("/v1/auth/me")
+    assert me.status_code == 200
+    assert me.json()["user_id"] == str(seeded_user.id)
+
+    blocked_logout = client.post("/v1/auth/logout")
+    assert blocked_logout.status_code == 403
+    assert blocked_logout.json()["detail"] == "CSRF validation failed"
+
+    logout = client.post(
+        "/v1/auth/logout",
+        headers={"X-CSRF-Token": client.cookies.get("zsme_csrf")},
+    )
+    assert logout.status_code == 204
 
 
 def test_me_never_crosses_tenant_boundary(
@@ -51,6 +86,24 @@ def test_me_never_crosses_tenant_boundary(
     assert response.status_code == 200
     assert response.json()["tenant_id"] == str(seeded_user.tenant_id)
     assert str(other_tenant_user.tenant_id) not in response.text
+
+
+def test_csrf_bootstrap_rotates_the_session_bound_token(client: TestClient, seeded_user) -> None:
+    login = client.post(
+        "/v1/auth/login",
+        json={
+            "tenant_slug": seeded_user.tenant.slug,
+            "email": seeded_user.email,
+            "password": "correct horse battery staple",
+        },
+    )
+    initial_token = login.json()["csrf_token"]
+
+    refreshed = client.get("/v1/auth/csrf")
+
+    assert refreshed.status_code == 200
+    assert refreshed.json()["csrf_token"] != initial_token
+    assert client.cookies.get("zsme_csrf") == refreshed.json()["csrf_token"]
 
 
 def test_logout_revokes_session(client: TestClient, seeded_user) -> None:

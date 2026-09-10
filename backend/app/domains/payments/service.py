@@ -17,6 +17,7 @@ from app.core.idempotency import (
     complete_idempotency,
     request_hash,
 )
+from app.core.pagination import Page
 from app.db.models import (
     AuditEvent,
     BusinessPartner,
@@ -158,11 +159,11 @@ def _document(
 ) -> FinancialDocument:
     expected_type = "sales_invoice" if payment_type == "receipt" else "vendor_bill"
     statement = select(FinancialDocument).where(
-            FinancialDocument.id == document_id,
-            FinancialDocument.tenant_id == principal.tenant_id,
-            FinancialDocument.organization_id == principal.organization_id,
-            FinancialDocument.document_type == expected_type,
-        )
+        FinancialDocument.id == document_id,
+        FinancialDocument.tenant_id == principal.tenant_id,
+        FinancialDocument.organization_id == principal.organization_id,
+        FinancialDocument.document_type == expected_type,
+    )
     if for_update:
         statement = statement.with_for_update()
     document = db.scalar(statement)
@@ -199,9 +200,7 @@ def _validate_allocations(
         if allocation.document_id in seen:
             raise PaymentDomainError("a payment cannot allocate the same document twice")
         seen.add(allocation.document_id)
-        document = _document(
-            db, principal, allocation.document_id, payment_type, for_update=True
-        )
+        document = _document(db, principal, allocation.document_id, payment_type, for_update=True)
         if document.partner_id != payload.partner_id:
             raise PaymentDomainError("allocated documents must belong to the payment partner")
         if document.currency_code != payload.currency_code.upper():
@@ -284,9 +283,7 @@ def create_payment(
     request_hash = _hash({"payment_type": payment_type, "payload": payload.model_dump(mode="json")})
     claim = _claim(db, principal, key, "payment.create", request_hash)
     if claim.replayed:
-        return _existing(
-            db, principal, claim.record, request_hash, "payment.create", payment_type
-        )
+        return _existing(db, principal, claim.record, request_hash, "payment.create", payment_type)
     expected_partner_type = "customer" if payment_type == "receipt" else "vendor"
     partner = db.scalar(
         select(BusinessPartner).where(
@@ -371,17 +368,26 @@ def create_payment(
 
 
 def list_payments(
-    db: Session, principal: Principal, payment_type: PaymentType, status: str | None = None
-) -> list[PaymentRecord]:
+    db: Session,
+    principal: Principal,
+    payment_type: PaymentType,
+    status: str | None = None,
+    *,
+    limit: int,
+    offset: int,
+) -> Page[PaymentRecord]:
     _org(principal)
     statement = _payment_query(principal, payment_type)
     if status is not None:
         statement = statement.where(PaymentRecord.status == status)
-    return list(
+    items = list(
         db.scalars(
             statement.order_by(PaymentRecord.payment_date.desc(), PaymentRecord.payment_number)
+            .offset(offset)
+            .limit(limit + 1)
         ).all()
     )
+    return Page(items=items[:limit], has_more=len(items) > limit)
 
 
 def _posting_command(payment: PaymentRecord) -> JournalPostCommand:

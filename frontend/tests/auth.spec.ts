@@ -26,7 +26,7 @@ test('configured login exchanges credentials and establishes a session', async (
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ access_token: 'session-token', token_type: 'bearer', expires_in: 1800 }),
+      body: JSON.stringify({ access_token: 'session-token', token_type: 'bearer', expires_in: 1800, csrf_token: 'csrf-token' }),
     });
   });
   await page.route('**/v1/auth/me', async (route) => {
@@ -52,6 +52,6 @@ test('configured login exchanges credentials and establishes a session', async (
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('zsme-access-token'))).toBe('session-token');
+  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('zsme-access-token'))).toBeNull();
   await expect(page.getByText('Demo Admin')).toBeVisible();
 });

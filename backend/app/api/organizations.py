@@ -1,12 +1,19 @@
 from decimal import Decimal
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.dependencies import OrganizationReadDep, OrganizationWriteDep, SessionDep
+from app.core.pagination import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_OFFSET,
+    MAX_PAGE_SIZE,
+    set_page_headers,
+)
 from app.db.models import Organization
 
 router = APIRouter(prefix="/v1/organizations", tags=["organizations"])
@@ -36,15 +43,24 @@ class OrganizationRead(BaseModel):
 
 @router.get("", response_model=list[OrganizationRead])
 def list_organizations(
-    principal: OrganizationReadDep, db: SessionDep
+    principal: OrganizationReadDep,
+    db: SessionDep,
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0, le=MAX_PAGE_OFFSET)] = 0,
 ) -> list[Organization]:
-    return list(
+    organizations = list(
         db.scalars(
             select(Organization)
             .where(Organization.tenant_id == principal.tenant_id)
             .order_by(Organization.slug)
+            .offset(offset)
+            .limit(limit + 1)
         ).all()
     )
+    has_more = len(organizations) > limit
+    set_page_headers(response, limit=limit, offset=offset, has_more=has_more)
+    return organizations[:limit]
 
 
 @router.post("", response_model=OrganizationRead, status_code=status.HTTP_201_CREATED)

@@ -16,6 +16,7 @@ from app.core.idempotency import (
     complete_idempotency,
     request_hash,
 )
+from app.core.pagination import Page
 from app.db.models import AuditEvent, BusinessPartner, IdempotencyRecord
 from app.domains.partners.schemas import PartnerCreate, PartnerUpdate
 
@@ -127,9 +128,7 @@ def create_partner(
     request_hash = _request_hash(payload.model_dump(mode="json"))
     claim = _claim(db, principal, key, "partner.create", request_hash)
     if claim.replayed:
-        return _existing_partner_result(
-            db, principal, claim.record, request_hash, "partner.create"
-        )
+        return _existing_partner_result(db, principal, claim.record, request_hash, "partner.create")
 
     partner = BusinessPartner(
         tenant_id=principal.tenant_id,
@@ -178,7 +177,9 @@ def list_partners(
     partner_type: str | None = None,
     search: str | None = None,
     include_archived: bool = False,
-) -> list[BusinessPartner]:
+    limit: int,
+    offset: int,
+) -> Page[BusinessPartner]:
     organization_id = _require_organization(principal)
     statement = select(BusinessPartner).where(
         BusinessPartner.tenant_id == principal.tenant_id,
@@ -198,7 +199,12 @@ def list_partners(
                 BusinessPartner.tax_id.ilike(pattern),
             )
         )
-    return list(db.scalars(statement.order_by(BusinessPartner.partner_code)).all())
+    items = list(
+        db.scalars(
+            statement.order_by(BusinessPartner.partner_code).offset(offset).limit(limit + 1)
+        ).all()
+    )
+    return Page(items=items[:limit], has_more=len(items) > limit)
 
 
 def get_partner(
@@ -232,9 +238,7 @@ def update_partner(
     )
     claim = _claim(db, principal, key, "partner.update", request_hash)
     if claim.replayed:
-        return _existing_partner_result(
-            db, principal, claim.record, request_hash, "partner.update"
-        )
+        return _existing_partner_result(db, principal, claim.record, request_hash, "partner.update")
 
     partner = get_partner(db, partner_id, principal, for_update=True)
     if partner.version != payload.expected_version:

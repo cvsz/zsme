@@ -9,6 +9,12 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import BankingReadDep, BankingWriteDep, SessionDep
+from app.core.pagination import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_OFFSET,
+    MAX_PAGE_SIZE,
+    set_page_headers,
+)
 from app.domains.banking.schemas import (
     BankAccountCreate,
     BankAccountRead,
@@ -50,9 +56,20 @@ def _key(value: str | None) -> str:
 def get_accounts(
     principal: BankingReadDep,
     db: SessionDep,
+    response: Response,
     include_inactive: Annotated[bool, Query()] = False,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0, le=MAX_PAGE_OFFSET)] = 0,
 ) -> list[BankAccountRead]:
-    return list_accounts(db, principal, include_inactive=include_inactive)
+    page = list_accounts(
+        db,
+        principal,
+        include_inactive=include_inactive,
+        limit=limit,
+        offset=offset,
+    )
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.post("/accounts", response_model=BankAccountRead, status_code=status.HTTP_201_CREATED)
@@ -106,10 +123,22 @@ def post_import(
 def get_transactions(
     principal: BankingReadDep,
     db: SessionDep,
+    response: Response,
     account_id: Annotated[UUID | None, Query()] = None,
     transaction_status: Annotated[BankTransactionStatus | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0, le=MAX_PAGE_OFFSET)] = 0,
 ) -> list[BankTransactionRead]:
-    return list_transactions(db, principal, account_id, transaction_status)
+    page = list_transactions(
+        db,
+        principal,
+        account_id,
+        transaction_status,
+        limit=limit,
+        offset=offset,
+    )
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.get("/transactions/{transaction_id}", response_model=BankTransactionRead)

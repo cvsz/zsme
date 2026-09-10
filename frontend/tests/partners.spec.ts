@@ -33,7 +33,7 @@ const partner = {
 async function configureConnectedWorkspace(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem('zsme-api-base-url', 'http://127.0.0.1:8000');
-    window.sessionStorage.setItem('zsme-access-token', 'session-token');
+    document.cookie = 'zsme_csrf=test-csrf; Path=/';
   });
   await page.route('**/v1/auth/me', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(adminUser) });

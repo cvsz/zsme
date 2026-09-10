@@ -16,6 +16,7 @@ from app.core.idempotency import (
     complete_idempotency,
     request_hash,
 )
+from app.core.pagination import Page
 from app.db.models import (
     AuditEvent,
     ChartAccount,
@@ -116,9 +117,7 @@ def _get_account(
     )
     if for_update:
         statement = statement.with_for_update()
-    account = db.scalar(
-        statement
-    )
+    account = db.scalar(statement)
     if account is None:
         raise AccountingDomainError("account not found")
     return account
@@ -137,8 +136,13 @@ def _assert_no_parent_cycle(
 
 
 def list_accounts(
-    db: Session, principal: Principal, include_inactive: bool = False
-) -> list[ChartAccount]:
+    db: Session,
+    principal: Principal,
+    include_inactive: bool = False,
+    *,
+    limit: int,
+    offset: int,
+) -> Page[ChartAccount]:
     organization_id = _org(principal)
     statement = select(ChartAccount).where(
         ChartAccount.tenant_id == principal.tenant_id,
@@ -146,7 +150,10 @@ def list_accounts(
     )
     if not include_inactive:
         statement = statement.where(ChartAccount.is_active.is_(True))
-    return list(db.scalars(statement.order_by(ChartAccount.code)).all())
+    items = list(
+        db.scalars(statement.order_by(ChartAccount.code).offset(offset).limit(limit + 1)).all()
+    )
+    return Page(items=items[:limit], has_more=len(items) > limit)
 
 
 def create_account(
@@ -269,9 +276,11 @@ def update_account(
     return AccountMutationResult(account)
 
 
-def list_periods(db: Session, principal: Principal) -> list[FiscalPeriod]:
+def list_periods(
+    db: Session, principal: Principal, *, limit: int, offset: int
+) -> Page[FiscalPeriod]:
     organization_id = _org(principal)
-    return list(
+    items = list(
         db.scalars(
             select(FiscalPeriod)
             .where(
@@ -279,8 +288,11 @@ def list_periods(db: Session, principal: Principal) -> list[FiscalPeriod]:
                 FiscalPeriod.organization_id == organization_id,
             )
             .order_by(FiscalPeriod.start_date.desc())
+            .offset(offset)
+            .limit(limit + 1)
         ).all()
     )
+    return Page(items=items[:limit], has_more=len(items) > limit)
 
 
 def _get_period(db: Session, principal: Principal, period_id: UUID) -> FiscalPeriod:
@@ -362,9 +374,7 @@ def create_period(
     except IntegrityError as error:
         db.delete(claim.record)
         db.flush()
-        raise AccountingDomainError(
-            "fiscal period dates overlap an existing period"
-        ) from error
+        raise AccountingDomainError("fiscal period dates overlap an existing period") from error
     return PeriodMutationResult(period)
 
 

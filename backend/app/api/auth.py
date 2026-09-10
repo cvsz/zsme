@@ -7,7 +7,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.api.dependencies import PrincipalDep, SessionDep
-from app.core.auth import create_session, revoke_session
+from app.core.auth import (
+    AUTH_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+    create_session,
+    refresh_csrf_token,
+    revoke_session,
+)
 from app.core.config import get_settings
 from app.core.login_throttle import (
     LoginRateLimitError,
@@ -32,6 +38,11 @@ class LoginResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"]
     expires_in: int
+    csrf_token: str
+
+
+class CsrfResponse(BaseModel):
+    csrf_token: str
 
 
 class MeResponse(BaseModel):
@@ -45,7 +56,9 @@ class MeResponse(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, request: Request, db: SessionDep) -> LoginResponse:
+def login(
+    payload: LoginRequest, request: Request, response: Response, db: SessionDep
+) -> LoginResponse:
     normalized_email = payload.email.strip().lower()
     bucket_keys = login_bucket_keys(request, payload.tenant_slug, normalized_email)
     try:
@@ -76,15 +89,60 @@ def login(payload: LoginRequest, request: Request, db: SessionDep) -> LoginRespo
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
 
     record_login_success(db, bucket_keys)
-    access_token = create_session(db, user)
-    response = LoginResponse(
+    access_token, csrf_token = create_session(db, user)
+    settings = get_settings()
+    expires_in = settings.access_token_ttl_minutes * 60
+    response.set_cookie(
+        key=AUTH_COOKIE_NAME,
+        value=access_token,
+        max_age=expires_in,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_samesite,
+        path="/",
+    )
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=csrf_token,
+        max_age=expires_in,
+        httponly=False,
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_samesite,
+        path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    login_response = LoginResponse(
         access_token=access_token,
         token_type="bearer",
-        expires_in=get_settings().access_token_ttl_minutes * 60,
+        expires_in=expires_in,
+        csrf_token=csrf_token,
     )
     request.state.tenant_id = str(user.tenant_id)
     request.state.user_id = str(user.id)
-    return response
+    return login_response
+
+
+@router.get("/csrf", response_model=CsrfResponse)
+def csrf(
+    principal: PrincipalDep,
+    response: Response,
+    db: SessionDep,
+) -> CsrfResponse:
+    csrf_token = refresh_csrf_token(db, principal)
+    settings = get_settings()
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=csrf_token,
+        max_age=settings.access_token_ttl_minutes * 60,
+        httponly=False,
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_samesite,
+        path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return CsrfResponse(csrf_token=csrf_token)
 
 
 @router.get("/me", response_model=MeResponse)
@@ -103,10 +161,14 @@ def me(principal: PrincipalDep) -> MeResponse:
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
     principal: PrincipalDep,
+    response: Response,
     db: SessionDep,
 ) -> Response:
     revoke_session(db, principal)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    response.delete_cookie(key=AUTH_COOKIE_NAME, path="/")
+    response.delete_cookie(key=CSRF_COOKIE_NAME, path="/")
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 __all__ = ["router"]

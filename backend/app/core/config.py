@@ -1,5 +1,6 @@
 import json
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,6 +43,14 @@ class Settings(BaseSettings):
         ge=5,
         le=24 * 60,
         validation_alias="ACCESS_TOKEN_TTL_MINUTES",
+    )
+    auth_cookie_secure: bool = Field(
+        default=False,
+        validation_alias="AUTH_COOKIE_SECURE",
+    )
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = Field(
+        default="lax",
+        validation_alias="AUTH_COOKIE_SAMESITE",
     )
     cors_origins: str = Field(default="", validation_alias="CORS_ORIGINS")
     request_body_limit_bytes: int = Field(
@@ -94,6 +103,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secret(self) -> "Settings":
+        if self.auth_cookie_samesite == "none" and not self.auth_cookie_secure:
+            raise ValueError("AUTH_COOKIE_SAMESITE=none requires secure cookies")
         if self.environment.lower() in {"production", "prod"}:
             if self.secret_key == DEFAULT_SECRET_KEY or len(self.secret_key) < 32:
                 raise ValueError(
@@ -102,6 +113,8 @@ class Settings(BaseSettings):
                 )
             if not self.database_url or self.database_url == DEFAULT_DATABASE_URL:
                 raise ValueError("DATABASE_URL must be explicitly configured in production")
+            if not self.auth_cookie_secure:
+                raise ValueError("AUTH_COOKIE_SECURE must be enabled in production")
         return self
 
 

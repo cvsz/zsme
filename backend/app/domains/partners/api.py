@@ -9,6 +9,12 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import PartnerReadDep, PartnerWriteDep, SessionDep
+from app.core.pagination import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_OFFSET,
+    MAX_PAGE_SIZE,
+    set_page_headers,
+)
 from app.domains.partners.schemas import (
     PartnerArchive,
     PartnerCreate,
@@ -43,17 +49,24 @@ def _partner_response(partner, response_status: int) -> JSONResponse:
 def get_partners(
     principal: PartnerReadDep,
     db: SessionDep,
+    response: Response,
     partner_type: Annotated[PartnerType | None, Query(alias="type")] = None,
     search: Annotated[str | None, Query(max_length=120)] = None,
     include_archived: bool = False,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0, le=MAX_PAGE_OFFSET)] = 0,
 ) -> list:
-    return list_partners(
+    page = list_partners(
         db,
         principal,
         partner_type=partner_type,
         search=search,
         include_archived=include_archived,
+        limit=limit,
+        offset=offset,
     )
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.get("/{partner_id}", response_model=PartnerRead)

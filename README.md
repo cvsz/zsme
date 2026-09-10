@@ -41,9 +41,19 @@ The project is designed as an independent implementation inspired by modern acco
 
 ZSME treats the ledger as the system of record. Posted entries must always balance (`total debit == total credit`). Posted journal lines are not edited in place; corrections are made through reversals or adjusting entries. Business documents and payments ultimately map to journal entries so reports can be reproduced from the ledger and audit trail.
 
+## Browser session boundary
+
+Browser authentication uses an `HttpOnly` `zsme_session` cookie and a readable `zsme_csrf` cookie. Unsafe browser requests must echo the CSRF value in `X-CSRF-Token`; API clients may continue using the bearer token returned by `/v1/auth/login`. Set `AUTH_COOKIE_SECURE=true` and keep `AUTH_COOKIE_SAMESITE=lax` (or `strict`) for production deployments.
+
 ## Status
 
-Repository bootstrap in progress.
+The foundation and accounting vertical slice is implemented and locally validated across
+authentication, tenant-scoped organizations, chart of accounts, fiscal periods, journals,
+AR/AP documents, payments, bank reconciliation, tax rules, audit events, and core reports.
+The repository is not yet a complete ERP release: catalog/inventory, manufacturing, assets,
+payroll, POS, cash-flow reporting, background automation/provider adapters, statutory
+submission, backup/restore operations, and production deployment remain explicit follow-up
+scopes.
 
 > Regulatory note: Thailand-specific VAT, withholding tax, e-Tax Invoice/e-Receipt, filing formats, and statutory retention requirements must be validated against current Revenue Department / ETDA requirements before production filing or submission.
 

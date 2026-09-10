@@ -17,6 +17,7 @@ from app.core.idempotency import (
     complete_idempotency,
     request_hash,
 )
+from app.core.pagination import Page
 from app.db.models import (
     AuditEvent,
     BankAccount,
@@ -163,12 +164,22 @@ def _audit(
 
 
 def list_accounts(
-    db: Session, principal: Principal, include_inactive: bool = False
-) -> list[BankAccount]:
+    db: Session,
+    principal: Principal,
+    include_inactive: bool = False,
+    *,
+    limit: int,
+    offset: int,
+) -> Page[BankAccount]:
     statement = _account_query(principal)
     if not include_inactive:
         statement = statement.where(BankAccount.is_active.is_(True))
-    return list(db.scalars(statement.order_by(BankAccount.account_code)).all())
+    items = list(
+        db.scalars(
+            statement.order_by(BankAccount.account_code).offset(offset).limit(limit + 1)
+        ).all()
+    )
+    return Page(items=items[:limit], has_more=len(items) > limit)
 
 
 def get_account(db: Session, principal: Principal, account_id: UUID) -> BankAccount:
@@ -357,7 +368,10 @@ def list_transactions(
     principal: Principal,
     account_id: UUID | None = None,
     transaction_status: BankTransactionStatus | None = None,
-) -> list[BankTransaction]:
+    *,
+    limit: int,
+    offset: int,
+) -> Page[BankTransaction]:
     if account_id is not None:
         _get_account(db, principal, account_id)
     statement = select(BankTransaction).where(
@@ -368,11 +382,14 @@ def list_transactions(
         statement = statement.where(BankTransaction.bank_account_id == account_id)
     if transaction_status is not None:
         statement = statement.where(BankTransaction.status == transaction_status)
-    return list(
+    items = list(
         db.scalars(
             statement.order_by(BankTransaction.transaction_date.desc(), BankTransaction.external_id)
+            .offset(offset)
+            .limit(limit + 1)
         ).all()
     )
+    return Page(items=items[:limit], has_more=len(items) > limit)
 
 
 def get_transaction(db: Session, principal: Principal, transaction_id: UUID) -> BankTransaction:
@@ -418,11 +435,13 @@ def reconcile_transaction(
     if transaction.status != "unmatched":
         raise BankingDomainError("bank transaction is already reconciled")
     payment = db.scalar(
-        select(PaymentRecord).where(
+        select(PaymentRecord)
+        .where(
             PaymentRecord.id == payment_id,
             PaymentRecord.tenant_id == principal.tenant_id,
             PaymentRecord.organization_id == organization_id,
-        ).with_for_update()
+        )
+        .with_for_update()
     )
     if payment is None or payment.status != "posted":
         raise BankingDomainError("only a posted payment in this organization can be reconciled")

@@ -30,4 +30,14 @@ def test_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert settings.environment == "development"
     assert settings.access_token_ttl_minutes == 30
+    assert settings.auth_cookie_secure is False
+    assert settings.auth_cookie_samesite == "lax"
 
+
+def test_production_requires_secure_auth_cookies(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+    monkeypatch.setenv("SECRET_KEY", "a-production-secret-key-with-at-least-32-characters")
+
+    with pytest.raises(ValidationError, match="AUTH_COOKIE_SECURE"):
+        Settings()

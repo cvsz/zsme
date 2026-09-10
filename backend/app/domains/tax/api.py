@@ -9,6 +9,12 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import SessionDep, TaxReadDep, TaxWriteDep
+from app.core.pagination import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_OFFSET,
+    MAX_PAGE_SIZE,
+    set_page_headers,
+)
 from app.domains.tax.schemas import TaxRateCreate, TaxRateRead, TaxType
 from app.domains.tax.service import TaxDomainError, create_rate, effective_rate, list_rates
 
@@ -29,9 +35,14 @@ def _key(value: str | None) -> str:
 def get_rates(
     principal: TaxReadDep,
     db: SessionDep,
+    response: Response,
     tax_type: Annotated[TaxType | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0, le=MAX_PAGE_OFFSET)] = 0,
 ) -> list[TaxRateRead]:
-    return list_rates(db, principal, tax_type)
+    page = list_rates(db, principal, tax_type, limit=limit, offset=offset)
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.post("/rates", response_model=TaxRateRead, status_code=status.HTTP_201_CREATED)

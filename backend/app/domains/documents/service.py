@@ -17,6 +17,7 @@ from app.core.idempotency import (
     complete_idempotency,
     request_hash,
 )
+from app.core.pagination import Page
 from app.db.models import (
     AuditEvent,
     BusinessPartner,
@@ -289,7 +290,9 @@ def list_documents(
     *,
     status: str | None = None,
     search: str | None = None,
-) -> list[FinancialDocument]:
+    limit: int,
+    offset: int,
+) -> Page[FinancialDocument]:
     _require_organization(principal)
     statement = _document_query(principal, document_type)
     if status is not None:
@@ -299,7 +302,8 @@ def list_documents(
     statement = statement.order_by(
         FinancialDocument.issue_date.desc(), FinancialDocument.document_number
     )
-    return list(db.scalars(statement).all())
+    items = list(db.scalars(statement.offset(offset).limit(limit + 1)).all())
+    return Page(items=items[:limit], has_more=len(items) > limit)
 
 
 def get_document(
@@ -374,9 +378,7 @@ def post_document(
             db, principal, claim.record, request_hash, "document.post", document_type
         )
 
-    document = _get_scoped_document(
-        db, document_id, principal, document_type, for_update=True
-    )
+    document = _get_scoped_document(db, document_id, principal, document_type, for_update=True)
     if document.status != "draft":
         raise DocumentDomainError("only draft documents can be posted")
     if not document.lines:

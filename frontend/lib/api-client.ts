@@ -1,6 +1,9 @@
 const API_BASE_URL_KEY = "zsme-api-base-url";
-const ACCESS_TOKEN_KEY = "zsme-access-token";
+const CSRF_COOKIE_NAME = "zsme_csrf";
+const COOKIE_SESSION_MARKER = "cookie-session";
 const API_BASE_URL_EVENT = "zsme-api-base-url-change";
+let sessionActive = false;
+let csrfTokenInMemory = "";
 const customApiEndpointAllowed =
   process.env.NEXT_PUBLIC_ALLOW_CUSTOM_API_ENDPOINT === "true" ||
   (process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_ALLOW_CUSTOM_API_ENDPOINT !== "false");
@@ -127,23 +130,76 @@ export function setApiBaseUrl(value: string): string {
   return normalized;
 }
 
-export function getAccessToken(): string {
+function readCookie(name: string): string {
   if (typeof window === "undefined") {
     return "";
   }
-  return window.sessionStorage.getItem(ACCESS_TOKEN_KEY) || "";
+  const prefix = `${name}=`;
+  const cookie = document.cookie.split(";").map((value) => value.trim()).find((value) => value.startsWith(prefix));
+  if (!cookie) {
+    return "";
+  }
+  try {
+    return decodeURIComponent(cookie.slice(prefix.length));
+  } catch {
+    return "";
+  }
 }
 
-export function setAccessToken(token: string): void {
+export function getAccessToken(): string {
   if (typeof window !== "undefined") {
-    window.sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
+    return sessionActive || Boolean(readCookie(CSRF_COOKIE_NAME)) ? COOKIE_SESSION_MARKER : "";
+  }
+  return "";
+}
+
+export function setAccessToken(_token: string, csrfToken = ""): void {
+  if (typeof window !== "undefined") {
+    sessionActive = true;
+    csrfTokenInMemory = csrfToken;
   }
 }
 
 export function clearAccessToken(): void {
+  sessionActive = false;
+  csrfTokenInMemory = "";
   if (typeof window !== "undefined") {
-    window.sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+    document.cookie = `${CSRF_COOKIE_NAME}=; Max-Age=0; Path=/; SameSite=Lax`;
   }
+}
+
+async function ensureCsrfToken(baseUrl: string): Promise<string> {
+  const cookieToken = readCookie(CSRF_COOKIE_NAME);
+  if (cookieToken) {
+    csrfTokenInMemory = cookieToken;
+    return cookieToken;
+  }
+  if (csrfTokenInMemory) {
+    return csrfTokenInMemory;
+  }
+  try {
+    const response = await fetch(`${baseUrl}/v1/auth/csrf`, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      return "";
+    }
+    const body: unknown = await response.json();
+    if (
+      body &&
+      typeof body === "object" &&
+      "csrf_token" in body &&
+      typeof body.csrf_token === "string"
+    ) {
+      csrfTokenInMemory = body.csrf_token;
+      return csrfTokenInMemory;
+    }
+  } catch {
+    // Let the original request surface the safe network error.
+  }
+  return "";
 }
 
 async function problemFromResponse(response: Response): Promise<ProblemDetails> {
@@ -174,12 +230,23 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
   if (authenticated) {
     const token = getAccessToken();
-    if (token) {
+    if (token && token !== COOKIE_SESSION_MARKER) {
       headers.set("Authorization", `Bearer ${token}`);
     }
   }
 
-  const response = await fetch(`${baseUrl}${path}`, { ...requestInit, headers });
+  const method = (requestInit.method || "GET").toUpperCase();
+  if (authenticated && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const csrfToken = await ensureCsrfToken(baseUrl);
+    if (csrfToken) {
+      headers.set("X-CSRF-Token", csrfToken);
+    }
+  }
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...requestInit,
+    credentials: "include",
+    headers,
+  });
   if (!response.ok) {
     throw new ApiError(response.status, await problemFromResponse(response));
   }
@@ -193,4 +260,4 @@ export async function checkApiHealth(): Promise<{ status: string; database?: str
   return apiRequest<{ status: string; database?: string }>("/ready", { authenticated: false });
 }
 
-export { API_BASE_URL_KEY, ACCESS_TOKEN_KEY };
+export { API_BASE_URL_KEY };

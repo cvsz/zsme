@@ -215,22 +215,29 @@ def post_journal_entry(
     if control_accounts:
         raise DomainError(f"control account cannot receive posting: {', '.join(control_accounts)}")
 
-    if db.scalar(
-        select(JournalEntryRecord.id).where(
-            JournalEntryRecord.tenant_id == principal.tenant_id,
-            JournalEntryRecord.organization_id == principal.organization_id,
-            JournalEntryRecord.reference == command.reference,
+    if (
+        db.scalar(
+            select(JournalEntryRecord.id).where(
+                JournalEntryRecord.tenant_id == principal.tenant_id,
+                JournalEntryRecord.organization_id == principal.organization_id,
+                JournalEntryRecord.reference == command.reference,
+            )
         )
-    ) is not None:
+        is not None
+    ):
         raise DomainError("journal reference already exists in this organization")
-    if command.source_id is not None and db.scalar(
-        select(JournalEntryRecord.id).where(
-            JournalEntryRecord.tenant_id == principal.tenant_id,
-            JournalEntryRecord.organization_id == principal.organization_id,
-            JournalEntryRecord.source_type == command.source_type,
-            JournalEntryRecord.source_id == command.source_id,
+    if (
+        command.source_id is not None
+        and db.scalar(
+            select(JournalEntryRecord.id).where(
+                JournalEntryRecord.tenant_id == principal.tenant_id,
+                JournalEntryRecord.organization_id == principal.organization_id,
+                JournalEntryRecord.source_type == command.source_type,
+                JournalEntryRecord.source_id == command.source_id,
+            )
         )
-    ) is not None:
+        is not None
+    ):
         raise DomainError("a journal entry already exists for this source")
     if command.reversal_of_id is not None:
         original = db.scalar(
@@ -255,7 +262,7 @@ def post_journal_entry(
                 reference=command.reference,
                 journal_date=command.journal_date,
                 memo=command.memo,
-                status="posted",
+                status="draft",
                 source_type=command.source_type,
                 source_id=command.source_id,
                 idempotency_key=normalized_key,
@@ -280,6 +287,9 @@ def post_journal_entry(
                         memo=line.memo,
                     )
                 )
+            db.flush()
+            entry.status = "posted"
+            entry.posted_at = now
             db.flush()
 
             audit = AuditEvent(
@@ -336,9 +346,7 @@ def reverse_journal_entry(
     normalized_key = idempotency_key.strip()
     if not normalized_key or len(normalized_key) > 200:
         raise DomainError("a valid idempotency key is required")
-    reverse_hash = request_hash(
-        {"operation": "journal.reverse", "entry_id": str(entry_id)}
-    )
+    reverse_hash = request_hash({"operation": "journal.reverse", "entry_id": str(entry_id)})
     claim = _claim(
         db,
         principal,

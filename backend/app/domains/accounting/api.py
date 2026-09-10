@@ -3,12 +3,18 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Response, status
+from fastapi import APIRouter, Header, Query, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import AccountingReadDep, AccountingWriteDep, SessionDep
+from app.core.pagination import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_OFFSET,
+    MAX_PAGE_SIZE,
+    set_page_headers,
+)
 from app.domains.accounting.schemas import (
     ChartAccountCreate,
     ChartAccountRead,
@@ -57,9 +63,16 @@ def _period_response(period, response_status: int) -> JSONResponse:
 def get_accounts(
     principal: AccountingReadDep,
     db: SessionDep,
+    response: Response,
     include_inactive: bool = False,
+    limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
 ) -> list[ChartAccountRead]:
-    return list_accounts(db, principal, include_inactive=include_inactive)
+    page = list_accounts(
+        db, principal, include_inactive=include_inactive, limit=limit, offset=offset
+    )
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.post("/accounts", response_model=ChartAccountRead, status_code=status.HTTP_201_CREATED)
@@ -92,8 +105,16 @@ def patch_account(
 
 
 @router.get("/periods", response_model=list[FiscalPeriodRead])
-def get_periods(principal: AccountingReadDep, db: SessionDep) -> list[FiscalPeriodRead]:
-    return list_periods(db, principal)
+def get_periods(
+    principal: AccountingReadDep,
+    db: SessionDep,
+    response: Response,
+    limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
+) -> list[FiscalPeriodRead]:
+    page = list_periods(db, principal, limit=limit, offset=offset)
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.post("/periods", response_model=FiscalPeriodRead, status_code=status.HTTP_201_CREATED)

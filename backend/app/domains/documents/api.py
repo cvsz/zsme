@@ -9,6 +9,12 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import ApReadDep, ApWriteDep, ArReadDep, ArWriteDep, SessionDep
+from app.core.pagination import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_OFFSET,
+    MAX_PAGE_SIZE,
+    set_page_headers,
+)
 from app.domains.documents.schemas import DocumentCreate, DocumentRead, DocumentStatus
 from app.domains.documents.service import (
     DocumentDomainError,
@@ -42,10 +48,23 @@ def _require_idempotency_key(idempotency_key: str | None) -> str:
 def get_invoices(
     principal: ArReadDep,
     db: SessionDep,
+    response: Response,
     document_status: Annotated[DocumentStatus | None, Query(alias="status")] = None,
     search: Annotated[str | None, Query(max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0, le=MAX_PAGE_OFFSET)] = 0,
 ) -> list[DocumentRead]:
-    return list_documents(db, principal, "sales_invoice", status=document_status, search=search)
+    page = list_documents(
+        db,
+        principal,
+        "sales_invoice",
+        status=document_status,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.post("/ar/invoices", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
@@ -96,10 +115,23 @@ def post_invoice_document(
 def get_bills(
     principal: ApReadDep,
     db: SessionDep,
+    response: Response,
     document_status: Annotated[DocumentStatus | None, Query(alias="status")] = None,
     search: Annotated[str | None, Query(max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0, le=MAX_PAGE_OFFSET)] = 0,
 ) -> list[DocumentRead]:
-    return list_documents(db, principal, "vendor_bill", status=document_status, search=search)
+    page = list_documents(
+        db,
+        principal,
+        "vendor_bill",
+        status=document_status,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+    set_page_headers(response, limit=limit, offset=offset, has_more=page.has_more)
+    return page.items
 
 
 @router.post("/ap/bills", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
