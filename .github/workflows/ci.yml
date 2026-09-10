@@ -59,7 +59,9 @@ jobs:
       - name: Test
         run: pytest -q
       - name: Dependency audit
-        run: pip-audit --strict --skip-editable
+        run: |
+          python -m pip freeze --exclude-editable > /tmp/zsme-requirements.txt
+          pip-audit --strict --requirement /tmp/zsme-requirements.txt
       - name: Import check
         run: python -c "from app.main import app; assert app.title == 'ZSME Accounting API'"
 
