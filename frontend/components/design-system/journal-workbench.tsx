@@ -46,7 +46,20 @@ type LoadState = "idle" | "ready" | "error";
 type DraftLine = JournalLineInput & { id: string };
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function currentYearStart(): string {
+  return `${new Date().getFullYear()}-01-01`;
+}
+
+function currentYearEnd(): string {
+  return `${new Date().getFullYear()}-12-31`;
 }
 
 function emptyLine(): DraftLine {
@@ -93,11 +106,11 @@ export function JournalWorkbench() {
   const [actionError, setActionError] = useState("");
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [reference, setReference] = useState("");
-  const [fromDate, setFromDate] = useState("2026-01-01");
-  const [toDate, setToDate] = useState("2026-12-31");
+  const [fromDate, setFromDate] = useState(currentYearStart);
+  const [toDate, setToDate] = useState(currentYearEnd);
   const [draftReference, setDraftReference] = useState("");
-  const [draftFromDate, setDraftFromDate] = useState("2026-01-01");
-  const [draftToDate, setDraftToDate] = useState("2026-12-31");
+  const [draftFromDate, setDraftFromDate] = useState(currentYearStart);
+  const [draftToDate, setDraftToDate] = useState(currentYearEnd);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [reversingId, setReversingId] = useState<string | null>(null);
@@ -212,7 +225,11 @@ export function JournalWorkbench() {
     setActionError("");
     setReversingId(entry.id);
     try {
-      await reverseJournalEntry(entry.id, createJournalIdempotencyKey("reverse"));
+      await reverseJournalEntry(
+        entry.id,
+        createJournalIdempotencyKey("reverse"),
+        todayIso(),
+      );
       setNotice("Journal entry reversed");
       setLoadState("idle");
       setRefreshNonce((value) => value + 1);
