@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.db.models import BankAccount, BusinessPartner, FinancialDocument
+from app.db.models import BankAccount, BusinessPartner, ChartAccount, FinancialDocument
 
 
 def _login(client) -> dict[str, str]:
@@ -278,3 +278,48 @@ def test_report_family_is_derived_from_posted_ledger_and_documents(
     assert aged_response.json()["overdue_total"] == "1070.00"
     assert aged_response.json()["bucket_totals"]["31_60"] == "1070.00"
     assert aged_response.json()["rows"][0]["bucket"] == "31_60"
+
+
+def test_cash_flow_includes_explicit_cash_equivalent_accounts(
+    client, db_session, seeded_user, ledger_ready
+) -> None:
+    petty_cash = ChartAccount(
+        tenant_id=seeded_user.tenant_id,
+        organization_id=seeded_user.organization_id,
+        code="1010",
+        name="Petty cash",
+        account_type="asset",
+        is_cash_equivalent=True,
+    )
+    db_session.add(petty_cash)
+    db_session.commit()
+
+    auth = _login(client)
+    posted = client.post(
+        "/v1/accounting/journal-entries",
+        headers={**auth, "Idempotency-Key": "petty-cash-post"},
+        json={
+            "reference": "PETTY-CASH-001",
+            "journal_date": "2026-09-08",
+            "source_type": "manual",
+            "lines": [
+                {"account_code": "1010", "debit": "250.00"},
+                {"account_code": "4000", "credit": "250.00"},
+            ],
+        },
+    )
+    assert posted.status_code == 201
+
+    response = client.get(
+        "/v1/reports/cash-flow?from_date=2026-09-01&to_date=2026-09-30",
+        headers=auth,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["configuration_status"] == "ready"
+    assert body["mapped_account_count"] == 1
+    assert body["total_inflow"] == "250.00"
+    assert body["closing_cash"] == "250.00"
+    assert body["rows"][0]["account_code"] == "1010"
+    assert body["rows"][0]["account_name"] == "Petty cash"
