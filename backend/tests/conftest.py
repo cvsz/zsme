@@ -1,6 +1,6 @@
+import os
 from collections.abc import Iterator
 from datetime import date
-import os
 
 import pytest
 from fastapi.testclient import TestClient
