@@ -102,13 +102,19 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Build API image
         run: docker build --tag zsme-api:test ./backend
+      - name: Build frontend image
+        run: docker build --tag zsme-frontend:test ./frontend
       - name: Check Dockerfile syntax
-        run: docker build --check ./backend
+        run: |
+          docker build --check ./backend
+          docker build --check ./frontend
       - name: Inspect image runtime contract
         run: |
           test "$(docker inspect --format='{{.Config.User}}' zsme-api:test)" = "zsme"
           docker inspect --format='{{json .Config.Healthcheck}}' zsme-api:test | grep -q '/ready'
           test -z "$(docker run --rm --entrypoint sh zsme-api:test -c 'find /app -maxdepth 3 -name ".env*" -print')"
+          test "$(docker inspect --format='{{.Config.User}}' zsme-frontend:test)" = "node"
+          docker inspect --format='{{json .Config.Healthcheck}}' zsme-frontend:test | grep -q '127.0.0.1:3000'
       - name: Scan image and write SBOM
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
@@ -118,12 +124,23 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
-      - name: Upload SBOM
+      - name: Scan frontend image and write SBOM
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: zsme-frontend:test
+          format: cyclonedx
+          output: /tmp/zsme-frontend.sbom.json
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Upload SBOMs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: zsme-api-sbom
-          path: /tmp/zsme-api.sbom.json
+          name: zsme-container-sboms
+          path: |
+            /tmp/zsme-api.sbom.json
+            /tmp/zsme-frontend.sbom.json
           if-no-files-found: error
 
   compose:
