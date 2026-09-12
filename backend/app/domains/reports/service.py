@@ -301,8 +301,9 @@ def cash_flow(
 ) -> CashFlowReport:
     """Return direct cash-account movement from the posted ledger.
 
-    Cash accounts are explicit bank-account mappings, rather than inferred
-    from account-code conventions.  This keeps the report auditable while the
+    Cash accounts are explicit bank-account mappings or chart accounts marked
+    as cash equivalents, rather than inferred from account-code conventions.
+    This keeps the report auditable while the
     chart of accounts does not yet model operating, investing, or financing
     classifications.
     """
@@ -336,9 +337,19 @@ def cash_flow(
         raise ReportDomainError(
             f"cash flow requires active bank accounts to use organization currency {currency_code}"
         )
+    explicit_cash_codes = set(
+        db.scalars(
+            select(ChartAccount.code).where(
+                ChartAccount.tenant_id == principal.tenant_id,
+                ChartAccount.organization_id == principal.organization_id,
+                ChartAccount.is_active.is_(True),
+                ChartAccount.is_cash_equivalent.is_(True),
+            )
+        ).all()
+    )
     configured_cash_codes = {
         str(account_code).strip().upper() for account_code, _ in active_bank_accounts
-    }
+    } | {str(account_code).strip().upper() for account_code in explicit_cash_codes}
     period = and_(
         JournalEntryRecord.journal_date >= from_date,
         JournalEntryRecord.journal_date <= to_date,
@@ -431,8 +442,8 @@ def cash_flow(
         to_date=to_date,
         method="direct_cash_account_movement",
         currency_code=currency_code,
-        configuration_status=("ready" if active_bank_accounts else "configuration_required"),
-        mapped_account_count=len(active_bank_accounts),
+        configuration_status=("ready" if configured_cash_codes else "configuration_required"),
+        mapped_account_count=len(configured_cash_codes),
         rows=rows,
         opening_cash=opening_cash,
         total_inflow=total_inflow,
