@@ -1,4 +1,8 @@
+from datetime import date
+
 from fastapi.testclient import TestClient
+
+from app.db.models import FiscalPeriod, JournalEntryRecord
 
 
 def _login(client: TestClient, seeded_user) -> str:
@@ -93,3 +97,43 @@ def test_journal_list_rejects_an_invalid_date_range(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "from_date must be on or before to_date"
+
+
+def test_reversal_moves_to_next_open_period_and_uses_bounded_reference(
+    client: TestClient, db_session, seeded_user, ledger_ready
+) -> None:
+    headers = {
+        "Authorization": f"Bearer {_login(client, seeded_user)}",
+        "Idempotency-Key": "api-reversal-source",
+    }
+    body = _journal_body()
+    body["reference"] = "R" * 100
+    posted = client.post("/v1/accounting/journal-entries", headers=headers, json=body)
+    assert posted.status_code == 201
+
+    ledger_ready.status = "locked"
+    next_period = FiscalPeriod(
+        tenant_id=seeded_user.tenant_id,
+        organization_id=seeded_user.organization_id,
+        name="2027",
+        start_date=date(2027, 1, 1),
+        end_date=date(2027, 12, 31),
+        status="open",
+    )
+    db_session.add(next_period)
+    db_session.commit()
+
+    reversed_response = client.post(
+        f"/v1/accounting/journal-entries/{posted.json()['entry_id']}/reverse",
+        headers={
+            "Authorization": headers["Authorization"],
+            "Idempotency-Key": "api-reversal-target",
+        },
+    )
+
+    assert reversed_response.status_code == 201
+    reversal = db_session.get(JournalEntryRecord, reversed_response.json()["entry_id"])
+    assert reversal is not None
+    assert reversal.journal_date == date(2027, 1, 1)
+    assert len(reversal.reference) <= 100
+    assert reversal.reference.startswith("REV/")
