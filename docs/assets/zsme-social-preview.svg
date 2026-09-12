@@ -1,0 +1,103 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#06101F"/>
+      <stop offset="0.55" stop-color="#0A1733"/>
+      <stop offset="1" stop-color="#173A78"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="70" y1="70" x2="154" y2="154" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#1E40AF"/>
+    </linearGradient>
+    <linearGradient id="chart" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="42"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <circle cx="1085" cy="155" r="225" fill="#3B82F6" opacity="0.14" filter="url(#glow)"/>
+  <circle cx="1080" cy="520" r="170" fill="#1E40AF" opacity="0.16" filter="url(#glow)"/>
+  <circle cx="150" cy="615" r="155" fill="#D97706" opacity="0.08" filter="url(#glow)"/>
+
+  <g opacity="0.08" stroke="#DBEAFE">
+    <line x1="0" y1="0" x2="0" y2="640"/><line x1="64" y1="0" x2="64" y2="640"/><line x1="128" y1="0" x2="128" y2="640"/><line x1="192" y1="0" x2="192" y2="640"/><line x1="256" y1="0" x2="256" y2="640"/><line x1="320" y1="0" x2="320" y2="640"/><line x1="384" y1="0" x2="384" y2="640"/><line x1="448" y1="0" x2="448" y2="640"/><line x1="512" y1="0" x2="512" y2="640"/><line x1="576" y1="0" x2="576" y2="640"/><line x1="640" y1="0" x2="640" y2="640"/><line x1="704" y1="0" x2="704" y2="640"/><line x1="768" y1="0" x2="768" y2="640"/><line x1="832" y1="0" x2="832" y2="640"/><line x1="896" y1="0" x2="896" y2="640"/><line x1="960" y1="0" x2="960" y2="640"/><line x1="1024" y1="0" x2="1024" y2="640"/><line x1="1088" y1="0" x2="1088" y2="640"/><line x1="1152" y1="0" x2="1152" y2="640"/><line x1="1216" y1="0" x2="1216" y2="640"/>
+    <line x1="0" y1="0" x2="1280" y2="0"/><line x1="0" y1="64" x2="1280" y2="64"/><line x1="0" y1="128" x2="1280" y2="128"/><line x1="0" y1="192" x2="1280" y2="192"/><line x1="0" y1="256" x2="1280" y2="256"/><line x1="0" y1="320" x2="1280" y2="320"/><line x1="0" y1="384" x2="1280" y2="384"/><line x1="0" y1="448" x2="1280" y2="448"/><line x1="0" y1="512" x2="1280" y2="512"/><line x1="0" y1="576" x2="1280" y2="576"/><line x1="0" y1="640" x2="1280" y2="640"/>
+  </g>
+
+  <rect x="70" y="72" width="84" height="84" rx="20" fill="#F8FAFC" fill-opacity="0.08" stroke="#60A5FA" stroke-opacity="0.75" stroke-width="2"/>
+  <path d="M92 94H134L122 108H102L131 132H115L92 113L104 100H122L92 128V118L110 100H92V94Z" fill="url(#brand)"/>
+
+  <text x="176" y="132" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="82" font-weight="700">ZSME</text>
+  <rect x="177" y="151" width="255" height="7" rx="3.5" fill="#D97706"/>
+
+  <text x="70" y="226" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="700">Thailand-first SME Accounting</text>
+  <text x="70" y="260" fill="#CBD5E1" font-family="Arial, Helvetica, sans-serif" font-size="20">Practical bookkeeping, tax workflows, reconciliation,</text>
+  <text x="70" y="291" fill="#CBD5E1" font-family="Arial, Helvetica, sans-serif" font-size="20">and financial reporting for growing Thai businesses.</text>
+
+  <g font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">
+    <rect x="70" y="330" width="140" height="36" rx="18" fill="#1E40AF" fill-opacity="0.78" stroke="#60A5FA" stroke-opacity="0.8"/>
+    <text x="84" y="353" fill="#DBEAFE">Double-entry</text>
+    <rect x="224" y="330" width="116" height="36" rx="18" fill="#1E40AF" fill-opacity="0.78" stroke="#60A5FA" stroke-opacity="0.8"/>
+    <text x="239" y="353" fill="#DBEAFE">VAT / WHT</text>
+    <rect x="352" y="330" width="96" height="36" rx="18" fill="#1E40AF" fill-opacity="0.78" stroke="#60A5FA" stroke-opacity="0.8"/>
+    <text x="369" y="353" fill="#DBEAFE">AR / AP</text>
+    <rect x="464" y="330" width="208" height="36" rx="18" fill="#1E40AF" fill-opacity="0.78" stroke="#60A5FA" stroke-opacity="0.8"/>
+    <text x="479" y="353" fill="#DBEAFE">Bank Reconciliation</text>
+  </g>
+
+  <text x="70" y="414" fill="#93C5FD" font-family="Arial, Helvetica, sans-serif" font-size="15">NEXT.JS  •  FASTAPI  •  POSTGRESQL  •  DOCKER</text>
+  <text x="70" y="450" fill="#CBD5E1" font-family="Arial, Helvetica, sans-serif" font-size="15">API-first  •  Multi-tenant  •  Self-hostable  •  Security-focused</text>
+
+  <rect x="70" y="500" width="540" height="68" rx="18" fill="#0F172A" fill-opacity="0.88" stroke="#DBEAFE" stroke-opacity="0.2"/>
+  <text x="92" y="532" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">cvsz/zsme</text>
+  <text x="92" y="557" fill="#94A3B8" font-family="Arial, Helvetica, sans-serif" font-size="15">Open-source business finance platform</text>
+  <rect x="475" y="515" width="109" height="34" rx="17" fill="#D97706"/>
+  <text x="497" y="538" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">THAI SME</text>
+
+  <rect x="690" y="62" width="524" height="516" rx="28" fill="#0F172A" fill-opacity="0.94" stroke="#60A5FA" stroke-opacity="0.65" stroke-width="2"/>
+  <text x="724" y="121" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="700">Financial Overview</text>
+  <rect x="1084" y="94" width="90" height="29" rx="14.5" fill="#1E40AF"/>
+  <text x="1102" y="114" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">LIVE</text>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="724" y="150" width="136" height="82" rx="15" fill="#F8FAFC"/>
+    <text x="737" y="178" fill="#64748B" font-size="13">Revenue</text>
+    <text x="737" y="207" fill="#0F172A" font-size="23" font-weight="700">฿1.28M</text>
+    <text x="737" y="225" fill="#3B82F6" font-size="13">+12.4%</text>
+
+    <rect x="875" y="150" width="136" height="82" rx="15" fill="#F8FAFC"/>
+    <text x="888" y="178" fill="#64748B" font-size="13">Cash</text>
+    <text x="888" y="207" fill="#0F172A" font-size="23" font-weight="700">฿642K</text>
+    <text x="888" y="225" fill="#16A34A" font-size="13">+8.1%</text>
+
+    <rect x="1026" y="150" width="136" height="82" rx="15" fill="#F8FAFC"/>
+    <text x="1039" y="178" fill="#64748B" font-size="13">Receivable</text>
+    <text x="1039" y="207" fill="#0F172A" font-size="23" font-weight="700">฿184K</text>
+    <text x="1039" y="225" fill="#D97706" font-size="13">-3.2%</text>
+  </g>
+
+  <rect x="724" y="255" width="454" height="171" rx="18" fill="#F8FAFC"/>
+  <text x="744" y="289" fill="#1E293B" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">Cash Flow</text>
+  <line x1="754" y1="391" x2="1148" y2="391" stroke="#94A3B8" stroke-opacity="0.45"/>
+  <line x1="754" y1="311" x2="754" y2="391" stroke="#94A3B8" stroke-opacity="0.45"/>
+  <path d="M770 368 L810 353 L850 360 L890 338 L930 345 L970 331 L1010 323 L1050 329 L1090 315 L1130 319 L1130 391 L770 391 Z" fill="#3B82F6" fill-opacity="0.18"/>
+  <polyline points="770,368 810,353 850,360 890,338 930,345 970,331 1010,323 1050,329 1090,315 1130,319" fill="none" stroke="url(#chart)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="724" y="449" width="136" height="66" rx="14" fill="#F8FAFC"/>
+    <text x="736" y="476" fill="#64748B" font-size="13">Trial Balance</text>
+    <text x="736" y="501" fill="#1E293B" font-size="16" font-weight="700">Balanced</text>
+    <rect x="875" y="449" width="136" height="66" rx="14" fill="#F8FAFC"/>
+    <text x="887" y="476" fill="#64748B" font-size="13">VAT</text>
+    <text x="887" y="501" fill="#1E293B" font-size="16" font-weight="700">Configured</text>
+    <rect x="1026" y="449" width="136" height="66" rx="14" fill="#F8FAFC"/>
+    <text x="1038" y="476" fill="#64748B" font-size="13">Audit Trail</text>
+    <text x="1038" y="501" fill="#1E293B" font-size="16" font-weight="700">Tracked</text>
+  </g>
+
+  <text x="724" y="550" fill="#94A3B8" font-family="Arial, Helvetica, sans-serif" font-size="15">Modern accounting workflows • auditable by design</text>
+</svg>
