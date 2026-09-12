@@ -41,3 +41,21 @@ def test_production_requires_secure_auth_cookies(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(ValidationError, match="AUTH_COOKIE_SECURE"):
         Settings()
+
+
+def test_production_requires_postgresql(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///production.db")
+    monkeypatch.setenv("SECRET_KEY", "a-production-secret-key-with-at-least-32-characters")
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "true")
+
+    with pytest.raises(ValidationError, match="PostgreSQL"):
+        Settings()
+
+
+def test_cors_json_configuration_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CORS_ORIGINS", "[broken-json")
+    settings = Settings()
+
+    with pytest.raises(ValueError, match="valid JSON"):
+        _ = settings.cors_origin_list
