@@ -31,7 +31,12 @@ import {
 import { formatDashboardMoney, getDashboardSummary, type DashboardSummary } from "@/lib/dashboard";
 
 type LoadState = "idle" | "ready" | "error";
-const DEFAULT_AS_OF = "2026-09-08";
+
+function todayIso(): string {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
 
 function formatDate(value: string): string {
   const date = new Date(`${value}T00:00:00Z`);
@@ -58,7 +63,7 @@ function safeError(error: unknown): string {
 
 export default function DashboardPage() {
   const configuredEndpoint = useSyncExternalStore(subscribeToApiBaseUrl, getApiBaseUrl, getServerApiBaseUrl);
-  const [asOf, setAsOf] = useState(DEFAULT_AS_OF);
+  const [asOf, setAsOf] = useState(todayIso);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [loadError, setLoadError] = useState("");
