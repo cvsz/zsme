@@ -25,6 +25,7 @@ import { type FormEvent, useEffect, useState, useSyncExternalStore } from "react
 
 import { DataCard } from "@/components/design-system/data-card";
 import { StatusBadge } from "@/components/design-system/status-badge";
+import { useWorkspaceAccess } from "@/components/design-system/workspace-context";
 import {
   ApiConfigurationError,
   ApiError,
@@ -93,6 +94,8 @@ function safeError(error: unknown, action: "load" | "create" | "import" | "recon
 }
 
 export function BankingWorkbench() {
+  const { currentUser } = useWorkspaceAccess();
+  const workspaceCurrency = currentUser?.organization_currency || "THB";
   const configuredEndpoint = useSyncExternalStore(
     subscribeToApiBaseUrl,
     getApiBaseUrl,
@@ -199,7 +202,7 @@ export function BankingWorkbench() {
       account_code: String(data.get("account_code") || "").trim(),
       name: String(data.get("name") || "").trim(),
       bank_name: String(data.get("bank_name") || "").trim(),
-      currency_code: String(data.get("currency_code") || "THB").trim().toUpperCase(),
+      currency_code: String(data.get("currency_code") || workspaceCurrency).trim().toUpperCase(),
       ledger_account_code: String(data.get("ledger_account_code") || "").trim(),
     };
     setIsCreatingAccount(true);
@@ -336,7 +339,7 @@ export function BankingWorkbench() {
               <div className="field"><label htmlFor="bank-account-code">Account code</label><input id="bank-account-code" name="account_code" required placeholder="BANK-001" /></div>
               <div className="field"><label htmlFor="bank-account-name">Account name</label><input id="bank-account-name" name="name" required placeholder="Operating account" /></div>
               <div className="field"><label htmlFor="bank-name">Bank name</label><input id="bank-name" name="bank_name" required placeholder="Thai bank" /></div>
-              <div className="field"><label htmlFor="bank-currency">Currency</label><input id="bank-currency" name="currency_code" required minLength={3} maxLength={3} defaultValue="THB" /></div>
+              <div className="field"><label htmlFor="bank-currency">Currency</label><input id="bank-currency" name="currency_code" required minLength={3} maxLength={3} defaultValue={workspaceCurrency} /></div>
               <div className="field"><label htmlFor="ledger-account">Ledger account</label><input id="ledger-account" name="ledger_account_code" required placeholder="1001" /><small>Must be an active asset account on the server.</small></div>
             </div>
             <div className="page-actions"><button className="button button-primary" type="submit" disabled={isCreatingAccount} aria-busy={isCreatingAccount}><FilePlus2 size={15} aria-hidden="true" /> {isCreatingAccount ? "Creating…" : "Create bank account"}</button><button className="button button-secondary" type="button" onClick={() => setIsAccountFormOpen(false)}>Cancel</button></div>
