@@ -30,6 +30,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore, useState } from "reac
 
 import { ApiError, clearAccessToken, getAccessToken, getApiBaseUrl, getServerApiBaseUrl, subscribeToApiBaseUrl } from "@/lib/api-client";
 import { getCurrentUser, signOut, type CurrentUser } from "@/lib/auth";
+import { searchWorkspace, type WorkspaceSearchResult } from "@/lib/search";
 import {
   WorkspaceAccessProvider,
   WorkspacePermissionBanner,
@@ -128,6 +129,10 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
   const isHydrated = useSyncExternalStore(subscribeToHydration, getClientHydration, getServerHydration);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<WorkspaceSearchResult[]>([]);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [userState, setUserState] = useState<WorkspaceUserState>("disconnected");
   const [loadedEndpoint, setLoadedEndpoint] = useState("");
@@ -302,6 +307,44 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
     : sessionLoaded
       ? userState
       : "loading";
+
+  useEffect(() => {
+    const normalized = searchQuery.trim();
+    if (!isSearchOpen || !effectiveUser || normalized.length < 2) {
+      setSearchResults([]);
+      setSearchError("");
+      setIsSearchLoading(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setIsSearchLoading(true);
+      setSearchError("");
+      searchWorkspace(normalized, controller.signal)
+        .then((results) => {
+          if (!controller.signal.aborted) {
+            setSearchResults(results);
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setSearchResults([]);
+            setSearchError("Workspace search is temporarily unavailable.");
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setIsSearchLoading(false);
+          }
+        });
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [effectiveUser, isSearchOpen, searchQuery]);
 
   const accessValue = useMemo<WorkspaceAccess>(
     () => ({
@@ -488,7 +531,15 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
             <h2 id="search-dialog-title" className="visually-hidden">Search workspace</h2>
             <div className="search-dialog-header">
               <Search size={18} aria-hidden="true" />
-              <input ref={searchInputRef} type="search" aria-label="Search workspace" placeholder="Global search is not available yet" disabled />
+              <input
+                ref={searchInputRef}
+                type="search"
+                aria-label="Search workspace"
+                placeholder="Search partners, documents, payments, journals…"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                disabled={!effectiveUser}
+              />
               <button
                 ref={closeSearchRef}
                 className="icon-button"
@@ -503,8 +554,37 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
               </button>
             </div>
             <div id="search-dialog-description" className="search-dialog-body">
-              <strong>{configuredEndpoint ? "Global search is not enabled in this release." : "Search is available after the API connects."}</strong>
-              <span>When enabled, results will respect tenant boundaries and your assigned permissions.</span>
+              {!configuredEndpoint ? (
+                <strong>Connect the API before searching the workspace.</strong>
+              ) : !effectiveUser ? (
+                <strong>Sign in before searching tenant data.</strong>
+              ) : searchQuery.trim().length < 2 ? (
+                <strong>Type at least two characters to search the workspace.</strong>
+              ) : isSearchLoading ? (
+                <strong>Searching authorized workspace data…</strong>
+              ) : searchError ? (
+                <strong role="alert">{searchError}</strong>
+              ) : searchResults.length === 0 ? (
+                <strong>No authorized results match this search.</strong>
+              ) : (
+                <div className="workspace-search-results" aria-label="Workspace search results">
+                  {searchResults.map((result) => (
+                    <Link
+                      key={`${result.kind}-${result.id}`}
+                      className="workspace-search-result"
+                      href={result.href}
+                      onClick={() => {
+                        setIsSearchOpen(false);
+                        setSearchQuery("");
+                      }}
+                    >
+                      <strong>{result.label}</strong>
+                      <span>{result.kind.replaceAll("_", " ")} · {result.meta}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+              <span>Results are restricted to your tenant, organization and assigned permissions.</span>
               <span><Check size={14} aria-hidden="true" /> Press Escape to close.</span>
             </div>
           </section>
