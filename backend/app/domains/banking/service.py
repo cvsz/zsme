@@ -24,6 +24,7 @@ from app.db.models import (
     BankImportBatch,
     BankTransaction,
     ChartAccount,
+    Organization,
     PaymentRecord,
 )
 from app.domains.banking.schemas import BankAccountCreate, BankImportCreate, BankTransactionStatus
@@ -193,6 +194,18 @@ def create_account(
     idempotency_key: str,
 ) -> BankAccountMutationResult:
     organization_id = _org(principal)
+    organization = db.scalar(
+        select(Organization).where(
+            Organization.id == organization_id,
+            Organization.tenant_id == principal.tenant_id,
+        )
+    )
+    if organization is None:
+        raise BankingDomainError("organization not found")
+    if payload.currency_code.upper() != organization.default_currency.upper():
+        raise BankingDomainError(
+            "foreign-currency bank accounts are not supported until exchange-rate accounting is configured"
+        )
     key = _key(idempotency_key)
     request_hash = _hash(
         {"operation": "bank_account.create", "payload": payload.model_dump(mode="json")}
@@ -455,12 +468,28 @@ def reconcile_transaction(
         raise BankingDomainError("payment cash account does not match the bank ledger account")
     if payment.amount.quantize(MONEY) != abs(transaction.amount).quantize(MONEY):
         raise BankingDomainError("bank transaction amount does not match payment amount")
+    existing_match = db.scalar(
+        select(BankTransaction.id).where(
+            BankTransaction.tenant_id == principal.tenant_id,
+            BankTransaction.organization_id == organization_id,
+            BankTransaction.matched_payment_id == payment.id,
+            BankTransaction.id != transaction.id,
+        )
+    )
+    if existing_match is not None:
+        raise BankingDomainError("payment is already reconciled to another bank transaction")
 
-    transaction.status = "reconciled"
-    transaction.matched_payment_id = payment.id
-    transaction.reconciled_at = datetime.now(UTC)
-    transaction.version += 1
-    db.flush()
+    try:
+        with db.begin_nested():
+            transaction.status = "reconciled"
+            transaction.matched_payment_id = payment.id
+            transaction.reconciled_at = datetime.now(UTC)
+            transaction.version += 1
+            db.flush()
+    except IntegrityError as error:
+        raise BankingDomainError(
+            "payment is already reconciled to another bank transaction"
+        ) from error
     _audit(
         db,
         principal,
