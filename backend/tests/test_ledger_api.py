@@ -1,4 +1,5 @@
 from datetime import date
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -132,7 +133,9 @@ def test_reversal_moves_to_next_open_period_and_uses_bounded_reference(
     )
 
     assert reversed_response.status_code == 201
-    reversal = db_session.get(JournalEntryRecord, reversed_response.json()["entry_id"])
+    reversal = db_session.get(
+        JournalEntryRecord, UUID(reversed_response.json()["entry_id"])
+    )
     assert reversal is not None
     assert reversal.journal_date == date(2027, 1, 1)
     assert len(reversal.reference) <= 100
