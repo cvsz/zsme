@@ -23,6 +23,7 @@ import { type FormEvent, type MouseEvent, useEffect, useState, useSyncExternalSt
 
 import { DataCard } from "@/components/design-system/data-card";
 import { StatusBadge } from "@/components/design-system/status-badge";
+import { useWorkspaceAccess } from "@/components/design-system/workspace-context";
 import {
   ApiConfigurationError,
   ApiError,
@@ -147,6 +148,8 @@ function statusTone(status: PaymentStatus): "neutral" | "success" | "warning" {
 
 export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
   const page = copy[kind];
+  const { currentUser } = useWorkspaceAccess();
+  const workspaceCurrency = currentUser?.organization_currency || "THB";
   const MovementIcon = page.icon;
   const configuredEndpoint = useSyncExternalStore(
     subscribeToApiBaseUrl,
@@ -250,7 +253,7 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
       payment_number: String(data.get("payment_number") || "").trim(),
       partner_id: String(data.get("partner_id") || ""),
       payment_date: String(data.get("payment_date") || ""),
-      currency_code: String(data.get("currency_code") || "THB").trim().toUpperCase(),
+      currency_code: String(data.get("currency_code") || workspaceCurrency).trim().toUpperCase(),
       amount: String(data.get("amount") || "").trim(),
       cash_account_code: String(data.get("cash_account_code") || "").trim(),
       unapplied_account_code: optional("unapplied_account_code"),
@@ -374,7 +377,7 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
               </div>
               <div className="field">
                 <label htmlFor={`${kind}-currency`}>Currency</label>
-                <input id={`${kind}-currency`} name="currency_code" required minLength={3} maxLength={3} defaultValue="THB" />
+                <input id={`${kind}-currency`} name="currency_code" required minLength={3} maxLength={3} defaultValue={workspaceCurrency} />
               </div>
               <div className="field">
                 <label htmlFor={`${kind}-amount`}>Payment amount</label>
@@ -458,7 +461,7 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
             <option value="posted">Posted</option>
             <option value="void">Voided</option>
           </select>
-          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Fiscal year 2026 · THB</span>
+          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Current organization · ${workspaceCurrency}</span>
         </div>
         <div className="data-table-wrap" tabIndex={0} aria-label={`Scroll ${page.plural} register horizontally`} aria-busy={viewState === "loading"}>
           <table className="data-table">
