@@ -13,6 +13,9 @@
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-Python-009688?logo=fastapi&logoColor=white" />
   <img alt="PostgreSQL 17" src="https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white" />
   <img alt="Docker" src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" />
+  <a href="LICENSE">
+    <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-D97706.svg" />
+  </a>
 </p>
 
 # ZSME
@@ -76,4 +79,6 @@ scopes.
 
 ## License
 
-License to be selected before public production release.
+ZSME is licensed under the [MIT License](LICENSE).
+
+Copyright © 2026 **ZEAZDEV COMPANY LIMITED**.
