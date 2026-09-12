@@ -80,6 +80,7 @@ def claim_idempotency(
         "resource_id": None,
     }
     dialect = db.get_bind().dialect.name
+    returns_inserted_id = False
     if dialect == "postgresql":
         from sqlalchemy.dialects.postgresql import insert as dialect_insert
 
@@ -90,7 +91,8 @@ def claim_idempotency(
                 IdempotencyRecord.organization_id,
                 IdempotencyRecord.key,
             ]
-        )
+        ).returning(IdempotencyRecord.id)
+        returns_inserted_id = True
     elif dialect == "sqlite":
         from sqlalchemy.dialects.sqlite import insert as dialect_insert
 
@@ -112,7 +114,11 @@ def claim_idempotency(
     except IntegrityError as error:
         raise IdempotencyError("could not reserve idempotency key") from error
 
-    inserted = result.rowcount == 1
+    inserted = (
+        result.scalar_one_or_none() == record_id
+        if returns_inserted_id
+        else result.rowcount == 1
+    )
     if inserted:
         record = db.get(IdempotencyRecord, record_id)
         if record is None:  # pragma: no cover - defensive driver failure guard
