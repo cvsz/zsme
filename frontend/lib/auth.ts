@@ -11,8 +11,6 @@ export type LoginInput = {
 };
 
 export type SessionResponse = {
-  access_token: string;
-  token_type: "bearer";
   expires_in: number;
   csrf_token: string;
 };
@@ -30,12 +28,12 @@ export type CurrentUser = {
 };
 
 export async function signIn(input: LoginInput): Promise<SessionResponse> {
-  const session = await apiRequest<SessionResponse>("/v1/auth/login", {
+  const session = await apiRequest<SessionResponse>("/v1/auth/browser-login", {
     method: "POST",
     body: JSON.stringify(input),
     authenticated: false,
   });
-  setAccessToken(session.access_token, session.csrf_token);
+  setAccessToken("", session.csrf_token);
   return session;
 }
 
