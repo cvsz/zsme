@@ -43,7 +43,7 @@ ZSME treats the ledger as the system of record. Posted entries must always balan
 
 ## Browser session boundary
 
-Browser authentication uses an `HttpOnly` `zsme_session` cookie and a readable `zsme_csrf` cookie. Unsafe browser requests must echo the CSRF value in `X-CSRF-Token`; API clients may continue using the bearer token returned by `/v1/auth/login`. Set `AUTH_COOKIE_SECURE=true` and keep `AUTH_COOKIE_SAMESITE=lax` (or `strict`) for production deployments.
+Browser authentication uses `POST /v1/auth/browser-login`, an `HttpOnly` `zsme_session` cookie, and a readable `zsme_csrf` cookie. The browser login response never exposes the raw session secret. Unsafe browser requests must echo the CSRF value in `X-CSRF-Token`; non-browser API clients may continue using the bearer token returned by `/v1/auth/login`. Set `AUTH_COOKIE_SECURE=true` and keep `AUTH_COOKIE_SAMESITE=lax` (or `strict`) for production deployments.
 
 ## Status
 
