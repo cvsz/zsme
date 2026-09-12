@@ -56,7 +56,13 @@ jobs:
           alembic upgrade head
           alembic downgrade base
           alembic upgrade head
-      - name: Test
+      - name: Fast tests (SQLite)
+        run: pytest -q
+      - name: PostgreSQL behavioral tests
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://zsme:zsme-ci-only@localhost:5432/zsme
+          APP_ENV: ci
+          SECRET_KEY: ci-only-secret-key-with-at-least-32-characters
         run: pytest -q
       - name: Dependency audit
         run: |
