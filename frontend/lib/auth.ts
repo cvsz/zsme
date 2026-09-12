@@ -21,6 +21,8 @@ export type CurrentUser = {
   user_id: string;
   tenant_id: string;
   organization_id: string | null;
+  organization_currency: string | null;
+  organization_timezone: string | null;
   email: string;
   display_name: string;
   roles: string[];
