@@ -47,6 +47,12 @@ jobs:
         run: ruff check .
       - name: Compile import surface
         run: python -m compileall -q app
+      - name: Test (SQLite fast suite)
+        run: pytest -q
+      - name: Test (PostgreSQL semantics)
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://zsme:zsme-ci-only@localhost:5432/zsme
+        run: pytest -q
       - name: Migration smoke
         env:
           APP_ENV: ci
@@ -56,8 +62,6 @@ jobs:
           alembic upgrade head
           alembic downgrade base
           alembic upgrade head
-      - name: Test
-        run: pytest -q
       - name: Dependency audit
         run: |
           python -m pip freeze --exclude-editable > /tmp/zsme-requirements.txt
