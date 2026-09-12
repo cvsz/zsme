@@ -95,7 +95,9 @@ class Settings(BaseSettings):
             try:
                 parsed = json.loads(raw)
             except json.JSONDecodeError as error:
-                raise ValueError("CORS_ORIGINS must be valid JSON or a comma-separated list") from error
+                raise ValueError(
+                    "CORS_ORIGINS must be valid JSON or a comma-separated list"
+                ) from error
             if isinstance(parsed, list):
                 return [str(item).strip() for item in parsed if str(item).strip()]
             raise ValueError("CORS_ORIGINS JSON must contain a list of origins")
