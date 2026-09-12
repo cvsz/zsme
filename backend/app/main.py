@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.access import router as access_router
 from app.api.auth import router as auth_router
 from app.api.errors import register_exception_handlers
 from app.api.health import router as health_router
@@ -44,6 +45,7 @@ if cors_origins:
         ],
         expose_headers=["X-Correlation-ID"],
     )
+app.include_router(access_router)
 app.include_router(auth_router)
 app.include_router(ledger_router)
 app.include_router(health_router)
