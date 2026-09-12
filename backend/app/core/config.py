@@ -1,5 +1,6 @@
 import json
 from functools import lru_cache
+from ipaddress import ip_network
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -53,6 +54,10 @@ class Settings(BaseSettings):
         validation_alias="AUTH_COOKIE_SAMESITE",
     )
     cors_origins: str = Field(default="", validation_alias="CORS_ORIGINS")
+    trusted_proxy_networks: str = Field(
+        default="",
+        validation_alias="TRUSTED_PROXY_NETWORKS",
+    )
     request_body_limit_bytes: int = Field(
         default=1_048_576,
         ge=64 * 1024,
@@ -100,6 +105,22 @@ class Settings(BaseSettings):
                 raise ValueError("CORS_ORIGINS JSON must be an array")
             return [str(item).strip() for item in parsed if str(item).strip()]
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+    @property
+    def trusted_proxy_network_list(self) -> list[str]:
+        networks = [
+            item.strip()
+            for item in self.trusted_proxy_networks.split(",")
+            if item.strip()
+        ]
+        for network in networks:
+            try:
+                ip_network(network, strict=False)
+            except ValueError as error:
+                raise ValueError(
+                    f"TRUSTED_PROXY_NETWORKS contains an invalid network: {network}"
+                ) from error
+        return networks
 
     @model_validator(mode="after")
     def validate_production_secret(self) -> "Settings":
