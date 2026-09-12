@@ -24,6 +24,8 @@ from app.db.models import (
     FinancialDocument,
     FinancialDocumentLine,
     IdempotencyRecord,
+    Organization,
+    TaxRateRule,
 )
 from app.domains.documents.schemas import DocumentCreate, DocumentType
 from app.domains.ledger.schemas import JournalLineInput, JournalPostCommand
@@ -196,6 +198,46 @@ def create_document(
         )
 
     partner = _partner_for_document(db, principal, payload.partner_id, document_type)
+    organization = db.scalar(
+        select(Organization).where(
+            Organization.id == organization_id,
+            Organization.tenant_id == principal.tenant_id,
+        )
+    )
+    if organization is None:
+        raise DocumentDomainError("organization not found")
+    if payload.currency_code.upper() != organization.default_currency.upper():
+        raise DocumentDomainError(
+            "foreign-currency documents are not supported until exchange-rate accounting is configured"
+        )
+
+    taxable_rates = {line.tax_rate for line in payload.lines if line.tax_rate > 0}
+    if taxable_rates:
+        if not organization.vat_registered:
+            raise DocumentDomainError("organization is not VAT registered")
+        configured_rates = set(
+            db.scalars(
+                select(TaxRateRule.rate).where(
+                    TaxRateRule.tenant_id == principal.tenant_id,
+                    TaxRateRule.organization_id == organization_id,
+                    TaxRateRule.tax_type == "vat",
+                    TaxRateRule.is_active.is_(True),
+                    TaxRateRule.effective_from <= payload.issue_date,
+                    (
+                        TaxRateRule.effective_to.is_(None)
+                        | (TaxRateRule.effective_to >= payload.issue_date)
+                    ),
+                )
+            ).all()
+        )
+        allowed_rates = configured_rates or {organization.vat_rate}
+        unsupported_rates = sorted(rate for rate in taxable_rates if rate not in allowed_rates)
+        if unsupported_rates:
+            rendered = ", ".join(str(rate) for rate in unsupported_rates)
+            raise DocumentDomainError(
+                f"VAT rate is not effective for the document date: {rendered}"
+            )
+
     document_number = payload.document_number.strip().upper()
     duplicate = db.scalar(
         select(FinancialDocument.id).where(
