@@ -24,6 +24,7 @@ import { type FormEvent, type MouseEvent, useEffect, useState, useSyncExternalSt
 
 import { DataCard } from "@/components/design-system/data-card";
 import { StatusBadge } from "@/components/design-system/status-badge";
+import { useWorkspaceAccess } from "@/components/design-system/workspace-context";
 import {
   ApiConfigurationError,
   ApiError,
@@ -173,6 +174,8 @@ function filterState(current: FilterState, next: Partial<FilterState>, kind: Doc
 
 export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
   const page = copy[kind];
+  const { currentUser } = useWorkspaceAccess();
+  const workspaceCurrency = currentUser?.organization_currency || "THB";
   const DirectionIcon = page.directionIcon;
   const AccentIcon = page.accentIcon;
   const searchParams = useSearchParams();
@@ -282,7 +285,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
       partner_id: String(data.get("partner_id") || ""),
       issue_date: String(data.get("issue_date") || ""),
       due_date: String(data.get("due_date") || ""),
-      currency_code: String(data.get("currency_code") || "THB").trim().toUpperCase(),
+      currency_code: String(data.get("currency_code") || workspaceCurrency).trim().toUpperCase(),
       control_account_code: String(data.get("control_account_code") || "").trim(),
       tax_account_code: optional("tax_account_code"),
       memo: optional("memo"),
@@ -409,7 +412,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
               </div>
               <div className="field">
                 <label htmlFor={`${kind}-currency`}>Currency</label>
-                <input id={`${kind}-currency`} name="currency_code" required minLength={3} maxLength={3} defaultValue="THB" />
+                <input id={`${kind}-currency`} name="currency_code" required minLength={3} maxLength={3} defaultValue={workspaceCurrency} />
               </div>
               <div className="field">
                 <label htmlFor={`${kind}-control-account`}>Control account</label>
@@ -499,7 +502,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
           <button className="button button-secondary" type="submit" disabled={!canUseWorkspace || viewState === "loading"}>
             <Filter size={15} aria-hidden="true" /> Apply filters
           </button>
-          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Fiscal year 2026 · THB</span>
+          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Current organization · ${workspaceCurrency}</span>
         </form>
         <div className="data-table-wrap" tabIndex={0} aria-label={`Scroll ${page.plural} register horizontally`} aria-busy={viewState === "loading"}>
           <table className="data-table">
