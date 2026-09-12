@@ -422,8 +422,8 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
       <section className="metric-grid" aria-label={`${page.title} metrics`}>
         <DataCard label={`Open ${page.plural}`} value={viewState === "ready" ? String(openCount) : "—"} meta="Draft movements in current view" icon={ReceiptText} />
         <DataCard label="Posted this view" value={viewState === "ready" ? String(postedCount) : "—"} meta="Immutable ledger-linked movements" icon={CheckCircle2} />
-        <DataCard label="Gross amount" value={viewState === "ready" ? formatMoney(totalAmount.toFixed(2)) : "—"} meta="Loaded movement total · THB" icon={CircleDollarSign} />
-        <DataCard label="Unapplied amount" value={viewState === "ready" ? formatMoney(unappliedAmount.toFixed(2)) : "—"} meta="Residual cash requiring review" icon={LockKeyhole} />
+        <DataCard label="Gross amount" value={viewState === "ready" ? formatMoney(totalAmount.toFixed(2), workspaceCurrency) : "—"} meta={`Loaded movement total · ${workspaceCurrency}`} icon={CircleDollarSign} />
+        <DataCard label="Unapplied amount" value={viewState === "ready" ? formatMoney(unappliedAmount.toFixed(2), workspaceCurrency) : "—"} meta="Residual cash requiring review" icon={LockKeyhole} />
       </section>
 
       <nav className="tab-list" aria-label={`${page.title} sections`}>
@@ -461,7 +461,7 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
             <option value="posted">Posted</option>
             <option value="void">Voided</option>
           </select>
-          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Current organization · ${workspaceCurrency}</span>
+          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Current organization · {workspaceCurrency}</span>
         </div>
         <div className="data-table-wrap" tabIndex={0} aria-label={`Scroll ${page.plural} register horizontally`} aria-busy={viewState === "loading"}>
           <table className="data-table">
