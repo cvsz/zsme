@@ -397,7 +397,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
             <Building2 size={17} aria-hidden="true" />
             <div>
               <strong>{workspaceLabel}</strong>
-              <span>Fiscal year 2026 · THB</span>
+              <span>Organization-scoped accounting session</span>
             </div>
           </div>
 
