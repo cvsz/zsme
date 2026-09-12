@@ -130,7 +130,7 @@ export default function SettingsPage() {
           <p>Operational information is intentionally separated from customer data.</p>
         </div>
         <div className="page-actions">
-          <StatusBadge tone="warning"><ServerCog size={12} aria-hidden="true" /> API not connected</StatusBadge>
+          <StatusBadge tone={connectionTone}><ServerCog size={12} aria-hidden="true" /> {connectionLabel}</StatusBadge>
           <span className="page-subtitle">Release controls require an authenticated operator and deployment policy.</span>
         </div>
       </section>
