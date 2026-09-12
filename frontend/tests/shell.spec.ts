@@ -62,3 +62,50 @@ test('core workspace routes render their own page headings', async ({ page }) =>
     await expect(page.locator('body')).not.toContainText('404');
   }
 });
+
+
+test('global search returns scoped workspace results', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('zsme-api-base-url', 'http://127.0.0.1:8000');
+    document.cookie = 'zsme_csrf=test-csrf; Path=/';
+  });
+  await page.route('**/v1/auth/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        user_id: 'user-1',
+        tenant_id: 'tenant-1',
+        organization_id: 'org-1',
+        organization_currency: 'THB',
+        organization_timezone: 'Asia/Bangkok',
+        email: 'admin@example.com',
+        display_name: 'Demo Admin',
+        roles: ['ADMIN'],
+        permissions: ['partner:read'],
+      }),
+    });
+  });
+  await page.route('**/v1/search?**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [{
+          kind: 'partner',
+          id: 'partner-1',
+          label: 'CUS-ACME · Acme Thailand',
+          meta: 'customer',
+          href: '/partners?search=CUS-ACME',
+        }],
+      }),
+    });
+  });
+
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: 'Open search' }).click();
+  await page.getByRole('searchbox', { name: 'Search workspace' }).fill('Acme');
+
+  await expect(page.getByText('CUS-ACME · Acme Thailand')).toBeVisible();
+  await expect(page.getByText('partner · customer')).toBeVisible();
+});
