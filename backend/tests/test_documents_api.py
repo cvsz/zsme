@@ -184,3 +184,31 @@ def test_posted_document_is_immutable(client, db_session, seeded_user, ledger_re
         assert "immutable" in str(error)
     else:
         raise AssertionError("posted document was mutable")
+
+
+def test_document_rejects_foreign_currency_and_ineffective_vat_rate(
+    client, db_session, seeded_user, ledger_ready
+) -> None:
+    partner = _partner(db_session, seeded_user, "customer", "CUS-CURRENCY-1")
+    headers = _login(client)
+
+    foreign = _invoice_body(partner.id, "INV-USD-1")
+    foreign["currency_code"] = "USD"
+    foreign_response = client.post(
+        "/v1/ar/invoices",
+        headers={**headers, "Idempotency-Key": "invoice-usd-reject"},
+        json=foreign,
+    )
+
+    invalid_vat = _invoice_body(partner.id, "INV-VAT-INVALID")
+    invalid_vat["lines"][0]["tax_rate"] = "8.00"
+    vat_response = client.post(
+        "/v1/ar/invoices",
+        headers={**headers, "Idempotency-Key": "invoice-vat-reject"},
+        json=invalid_vat,
+    )
+
+    assert foreign_response.status_code == 409
+    assert "foreign-currency" in foreign_response.json()["detail"]
+    assert vat_response.status_code == 409
+    assert "VAT rate" in vat_response.json()["detail"]
