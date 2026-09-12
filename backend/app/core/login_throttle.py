@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 from dataclasses import dataclass
+from ipaddress import ip_address, ip_network
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
@@ -22,8 +23,29 @@ class LoginRateLimitError(Exception):
         return "too many login attempts"
 
 
-def login_bucket_keys(request: Request, tenant_slug: str, email: str) -> tuple[str, str]:
+def _client_host(request: Request) -> str:
     client_host = request.client.host if request.client is not None else "unknown"
+    try:
+        peer = ip_address(client_host)
+    except ValueError:
+        return client_host
+
+    trusted = get_settings().trusted_proxy_network_list
+    if not any(peer in ip_network(network, strict=False) for network in trusted):
+        return client_host
+
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    candidate = forwarded.split(",", maxsplit=1)[0].strip()
+    if not candidate:
+        return client_host
+    try:
+        return str(ip_address(candidate))
+    except ValueError:
+        return client_host
+
+
+def login_bucket_keys(request: Request, tenant_slug: str, email: str) -> tuple[str, str]:
+    client_host = _client_host(request)
     normalized_tenant = tenant_slug.strip().lower()
     identity = f"identity:{normalized_tenant}:{email.strip().lower()}"
     network = f"network:{normalized_tenant}:{client_host}"
