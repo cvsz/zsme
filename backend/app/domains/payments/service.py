@@ -22,6 +22,7 @@ from app.db.models import (
     AuditEvent,
     BusinessPartner,
     FinancialDocument,
+    Organization,
     PaymentAllocation,
     PaymentRecord,
 )
@@ -284,6 +285,19 @@ def create_payment(
     claim = _claim(db, principal, key, "payment.create", request_hash)
     if claim.replayed:
         return _existing(db, principal, claim.record, request_hash, "payment.create", payment_type)
+    organization = db.scalar(
+        select(Organization).where(
+            Organization.id == organization_id,
+            Organization.tenant_id == principal.tenant_id,
+        )
+    )
+    if organization is None:
+        raise PaymentDomainError("organization not found")
+    if payload.currency_code.upper() != organization.default_currency.upper():
+        raise PaymentDomainError(
+            "foreign-currency payments are not supported until exchange-rate accounting is configured"
+        )
+
     expected_partner_type = "customer" if payment_type == "receipt" else "vendor"
     partner = db.scalar(
         select(BusinessPartner).where(
