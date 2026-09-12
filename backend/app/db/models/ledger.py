@@ -44,6 +44,9 @@ class ChartAccount(IdentifiedTimestampMixin, OrganizationScopeMixin, Base):
     is_control: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
+    is_cash_equivalent: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     version: Mapped[int] = mapped_column(default=1, server_default="1", nullable=False)
 
