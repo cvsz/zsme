@@ -458,7 +458,7 @@ export function PaymentWorkbench({ kind }: Readonly<{ kind: PaymentKind }>) {
             <option value="posted">Posted</option>
             <option value="void">Voided</option>
           </select>
-          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Fiscal year 2026 · THB</span>
+          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Organization ledger scope</span>
         </div>
         <div className="data-table-wrap" tabIndex={0} aria-label={`Scroll ${page.plural} register horizontally`} aria-busy={viewState === "loading"}>
           <table className="data-table">
