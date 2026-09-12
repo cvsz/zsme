@@ -11,6 +11,7 @@ export type ChartAccount = {
   account_type: AccountType;
   parent_id: string | null;
   is_control: boolean;
+  is_cash_equivalent: boolean;
   is_active: boolean;
   version: number;
 };
@@ -35,6 +36,7 @@ export type CreateChartAccountInput = {
   account_type: AccountType;
   parent_id?: string;
   is_control?: boolean;
+  is_cash_equivalent?: boolean;
 };
 
 export type UpdateChartAccountInput = {
@@ -42,6 +44,7 @@ export type UpdateChartAccountInput = {
   name?: string;
   parent_id?: string | null;
   is_control?: boolean;
+  is_cash_equivalent?: boolean;
   is_active?: boolean;
 };
 
