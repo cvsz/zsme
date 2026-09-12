@@ -1679,3 +1679,37 @@ h4 {
     padding: 0;
   }
 }
+
+
+.workspace-search-results {
+  display: grid;
+  gap: var(--space-xs);
+  max-height: min(50vh, 28rem);
+  overflow-y: auto;
+}
+
+.workspace-search-result {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  text-decoration: none;
+}
+
+.workspace-search-result:hover,
+.workspace-search-result:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.workspace-search-result strong {
+  color: var(--color-foreground);
+  font-size: 0.85rem;
+}
+
+.workspace-search-result span {
+  color: var(--color-foreground-muted);
+  font-size: 0.75rem;
+  text-transform: capitalize;
+}
