@@ -52,6 +52,7 @@ def post_entry(
     command: JournalPostCommand,
     principal: AccountingWriteDep,
     db: SessionDep,
+    reversal_date: date | None = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Response:
     if idempotency_key is None:
@@ -78,7 +79,9 @@ def reverse_entry(
     if idempotency_key is None:
         raise HTTPException(status_code=422, detail="Idempotency-Key header is required")
     try:
-        result = reverse_journal_entry(db, entry_id, principal, idempotency_key)
+        result = reverse_journal_entry(
+            db, entry_id, principal, idempotency_key, reversal_date=reversal_date
+        )
     except DomainError as error:
         raise _domain_error(error) from error
     response_status = 201 if result.status == "posted" else 200
