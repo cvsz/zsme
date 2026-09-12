@@ -41,6 +41,11 @@ class LoginResponse(BaseModel):
     csrf_token: str
 
 
+class BrowserLoginResponse(BaseModel):
+    expires_in: int
+    csrf_token: str
+
+
 class CsrfResponse(BaseModel):
     csrf_token: str
 
@@ -123,6 +128,20 @@ def login(
     request.state.tenant_id = str(user.tenant_id)
     request.state.user_id = str(user.id)
     return login_response
+
+
+@router.post("/browser-login", response_model=BrowserLoginResponse)
+def browser_login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: SessionDep,
+) -> BrowserLoginResponse:
+    session = login(payload, request, response, db)
+    return BrowserLoginResponse(
+        expires_in=session.expires_in,
+        csrf_token=session.csrf_token,
+    )
 
 
 @router.get("/csrf", response_model=CsrfResponse)
