@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from datetime import date
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,6 +16,7 @@ from app.db.models import (
     FiscalPeriod,
     Organization,
     Role,
+    TaxRateRule,
     Tenant,
     User,
     UserRole,
@@ -24,11 +26,16 @@ from app.db.session import get_session
 
 @pytest.fixture
 def db_engine() -> Iterator[Engine]:
-    engine = create_engine(
-        "sqlite+pysqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    database_url = os.getenv("TEST_DATABASE_URL", "").strip()
+    if database_url:
+        engine = create_engine(database_url, pool_pre_ping=True)
+        Base.metadata.drop_all(engine)
+    else:
+        engine = create_engine(
+            "sqlite+pysqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
     Base.metadata.create_all(engine)
     try:
         yield engine
@@ -177,6 +184,17 @@ def ledger_ready(db_session: Session, seeded_user: User) -> FiscalPeriod:
         end_date=date(2026, 12, 31),
         status="open",
     )
-    db_session.add_all([*accounts, period])
+    vat_rule = TaxRateRule(
+        tenant_id=seeded_user.tenant_id,
+        organization_id=seeded_user.organization_id,
+        tax_type="vat",
+        code="SYSTEM-VAT7",
+        name="VAT 7%",
+        rate="7.00",
+        effective_from=date(2020, 1, 1),
+        effective_to=None,
+        is_active=True,
+    )
+    db_session.add_all([*accounts, period, vat_rule])
     db_session.commit()
     return period
