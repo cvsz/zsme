@@ -36,7 +36,7 @@ def test_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_production_requires_secure_auth_cookies(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@db/zsme")
     monkeypatch.setenv("SECRET_KEY", "a-production-secret-key-with-at-least-32-characters")
 
     with pytest.raises(ValidationError, match="AUTH_COOKIE_SECURE"):
