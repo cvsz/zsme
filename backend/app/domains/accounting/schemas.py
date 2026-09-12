@@ -16,6 +16,13 @@ class ChartAccountCreate(BaseModel):
     account_type: AccountType
     parent_id: UUID | None = None
     is_control: bool = False
+    is_cash_equivalent: bool = False
+
+    @model_validator(mode="after")
+    def validate_cash_equivalent(self) -> ChartAccountCreate:
+        if self.is_cash_equivalent and (self.account_type != "asset" or self.is_control):
+            raise ValueError("cash-equivalent accounts must be non-control asset accounts")
+        return self
 
 
 class ChartAccountUpdate(BaseModel):
@@ -23,6 +30,7 @@ class ChartAccountUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     parent_id: UUID | None = None
     is_control: bool | None = None
+    is_cash_equivalent: bool | None = None
     is_active: bool | None = None
 
     @model_validator(mode="after")
@@ -47,6 +55,7 @@ class ChartAccountRead(BaseModel):
     account_type: AccountType
     parent_id: UUID | None
     is_control: bool
+    is_cash_equivalent: bool
     is_active: bool
     version: int
 
