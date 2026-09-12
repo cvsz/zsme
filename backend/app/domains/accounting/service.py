@@ -193,6 +193,7 @@ def create_account(
         account_type=payload.account_type,
         parent_id=payload.parent_id,
         is_control=payload.is_control,
+        is_cash_equivalent=payload.is_cash_equivalent,
         is_active=True,
     )
     try:
@@ -249,6 +250,16 @@ def update_account(
     if account.version != payload.expected_version:
         raise AccountingDomainError("account version does not match; reload before updating")
     changes = payload.model_dump(exclude={"expected_version"}, exclude_unset=True)
+    proposed_control = bool(changes.get("is_control", account.is_control))
+    proposed_cash_equivalent = bool(
+        changes.get("is_cash_equivalent", account.is_cash_equivalent)
+    )
+    if proposed_cash_equivalent and (
+        account.account_type != "asset" or proposed_control
+    ):
+        raise AccountingDomainError(
+            "cash-equivalent accounts must be non-control asset accounts"
+        )
     if payload.parent_id is not None:
         _assert_no_parent_cycle(db, principal, account.id, payload.parent_id)
     has_postings = db.scalar(
@@ -258,7 +269,7 @@ def update_account(
         raise AccountingDomainError("posted account structure cannot be changed")
     if "name" in changes:
         account.name = str(changes["name"]).strip()
-    for field in ("parent_id", "is_control", "is_active"):
+    for field in ("parent_id", "is_control", "is_cash_equivalent", "is_active"):
         if field in changes:
             setattr(account, field, changes[field])
     account.version += 1
