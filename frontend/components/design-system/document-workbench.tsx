@@ -460,7 +460,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
       <section className="metric-grid" aria-label={`${page.title} metrics`}>
         <DataCard label={`Open ${page.plural}`} value={viewState === "ready" ? String(openCount) : "—"} meta="Draft documents in current view" icon={page.directionIcon} />
         <DataCard label="Posted this view" value={viewState === "ready" ? String(postedCount) : "—"} meta="Immutable ledger-linked documents" icon={CheckCircle2} />
-        <DataCard label="Gross total" value={viewState === "ready" ? formatMoney(grossTotal.toFixed(2)) : "—"} meta="Loaded document total · THB" icon={AccentIcon} />
+        <DataCard label="Gross total" value={viewState === "ready" ? formatMoney(grossTotal.toFixed(2), workspaceCurrency) : "—"} meta={`Loaded document total · ${workspaceCurrency}`} icon={AccentIcon} />
         <DataCard label="Control health" value={viewState === "ready" ? "Review" : "—"} meta="Posting remains permission-gated" status={viewState === "ready" ? "Policy path" : "Not evaluated"} icon={LockKeyhole} />
       </section>
 
@@ -502,7 +502,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
           <button className="button button-secondary" type="submit" disabled={!canUseWorkspace || viewState === "loading"}>
             <Filter size={15} aria-hidden="true" /> Apply filters
           </button>
-          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Current organization · ${workspaceCurrency}</span>
+          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Current organization · {workspaceCurrency}</span>
         </form>
         <div className="data-table-wrap" tabIndex={0} aria-label={`Scroll ${page.plural} register horizontally`} aria-busy={viewState === "loading"}>
           <table className="data-table">
