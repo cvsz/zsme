@@ -232,3 +232,22 @@ def test_payment_requires_unapplied_account_for_unallocated_amount(
 
     assert response.status_code == 409
     assert "unapplied" in response.json()["detail"]
+
+
+def test_payment_rejects_foreign_currency(
+    client, db_session, seeded_user, ledger_ready
+) -> None:
+    partner = _partner(db_session, seeded_user, "customer", "CUS-FX-PAY")
+    headers = _login(client)
+    invoice = _invoice(client, headers, partner.id, "INV-FX-PAY")
+    body = _receipt_body(partner.id, invoice["id"], "1070.00", "REC-FX-PAY")
+    body["currency_code"] = "USD"
+
+    response = client.post(
+        "/v1/ar/receipts",
+        headers={**headers, "Idempotency-Key": "receipt-fx-reject"},
+        json=body,
+    )
+
+    assert response.status_code == 409
+    assert "foreign-currency" in response.json()["detail"]
