@@ -234,6 +234,23 @@ function getReport(
   }
 }
 
+function currentYearStart(): string {
+  return `${new Date().getFullYear()}-01-01`;
+}
+
+function currentYearEnd(): string {
+  return `${new Date().getFullYear()}-12-31`;
+}
+
+function todayIso(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function matchesSearch(value: string, search: string): boolean {
   return !search || value.toLowerCase().includes(search);
 }
@@ -258,12 +275,12 @@ export function ReportCenter({ activeReport }: Readonly<{ activeReport?: string 
     getServerApiBaseUrl,
   );
   const authenticated = Boolean(getAccessToken());
-  const [fromDate, setFromDate] = useState("2026-01-01");
-  const [toDate, setToDate] = useState("2026-12-31");
-  const [asOfDate, setAsOfDate] = useState("2026-12-31");
-  const [appliedFromDate, setAppliedFromDate] = useState("2026-01-01");
-  const [appliedToDate, setAppliedToDate] = useState("2026-12-31");
-  const [appliedAsOfDate, setAppliedAsOfDate] = useState("2026-12-31");
+  const [fromDate, setFromDate] = useState(currentYearStart);
+  const [toDate, setToDate] = useState(currentYearEnd);
+  const [asOfDate, setAsOfDate] = useState(todayIso);
+  const [appliedFromDate, setAppliedFromDate] = useState(currentYearStart);
+  const [appliedToDate, setAppliedToDate] = useState(currentYearEnd);
+  const [appliedAsOfDate, setAppliedAsOfDate] = useState(todayIso);
   const [search, setSearch] = useState("");
   const [report, setReport] = useState<ReportPayload | null>(null);
   const [reportKindForData, setReportKindForData] = useState<ReportKind | null>(null);
