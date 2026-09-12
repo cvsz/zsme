@@ -1,6 +1,7 @@
 import os
 from collections.abc import Iterator
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -190,7 +191,7 @@ def ledger_ready(db_session: Session, seeded_user: User) -> FiscalPeriod:
         tax_type="vat",
         code="SYSTEM-VAT7",
         name="VAT 7%",
-        rate="7.00",
+        rate=Decimal("7.00"),
         effective_from=date(2020, 1, 1),
         effective_to=None,
         is_active=True,
