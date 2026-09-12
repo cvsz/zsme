@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from datetime import date
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,11 +25,16 @@ from app.db.session import get_session
 
 @pytest.fixture
 def db_engine() -> Iterator[Engine]:
-    engine = create_engine(
-        "sqlite+pysqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    database_url = os.getenv("TEST_DATABASE_URL", "").strip()
+    if database_url:
+        engine = create_engine(database_url, pool_pre_ping=True)
+        Base.metadata.drop_all(engine)
+    else:
+        engine = create_engine(
+            "sqlite+pysqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
     Base.metadata.create_all(engine)
     try:
         yield engine
@@ -60,7 +66,12 @@ def client(db_session: Session) -> Iterator[TestClient]:
 @pytest.fixture
 def seeded_user(db_session: Session) -> User:
     tenant = Tenant(slug="demo", name="Demo Tenant")
-    organization = Organization(tenant=tenant, legal_name="Demo Co", slug="demo-co")
+    organization = Organization(
+        tenant=tenant,
+        legal_name="Demo Co",
+        slug="demo-co",
+        vat_registered=True,
+    )
     user = User(
         tenant=tenant,
         organization=organization,
