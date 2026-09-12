@@ -1,3 +1,20 @@
+<p align="center">
+  <img src="docs/assets/zsme-social-preview.svg" alt="ZSME — Thailand-first SME Accounting" width="100%" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/cvsz/zsme/actions/workflows/ci.yml">
+    <img alt="CI" src="https://github.com/cvsz/zsme/actions/workflows/ci.yml/badge.svg?branch=main" />
+  </a>
+  <img alt="Development status" src="https://img.shields.io/badge/status-active%20development-D97706" />
+  <img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" />
+  <img alt="Node.js 22" src="https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white" />
+  <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-Python-009688?logo=fastapi&logoColor=white" />
+  <img alt="PostgreSQL 17" src="https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white" />
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" />
+</p>
+
 # ZSME
 
 **ZSME** is an open-source, Thailand-first SME accounting and business finance platform.
