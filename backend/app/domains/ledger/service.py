@@ -340,13 +340,20 @@ def reverse_journal_entry(
     entry_id: UUID,
     principal: Principal,
     idempotency_key: str,
+    reversal_date: date | None = None,
 ) -> JournalPostResult:
     if principal.organization_id is None:
         raise DomainError("an organization is required for ledger reversal")
     normalized_key = idempotency_key.strip()
     if not normalized_key or len(normalized_key) > 200:
         raise DomainError("a valid idempotency key is required")
-    reverse_hash = request_hash({"operation": "journal.reverse", "entry_id": str(entry_id)})
+    reverse_hash = request_hash(
+        {
+            "operation": "journal.reverse",
+            "entry_id": str(entry_id),
+            "reversal_date": reversal_date.isoformat() if reversal_date else None,
+        }
+    )
     claim = _claim(
         db,
         principal,
@@ -381,12 +388,26 @@ def reverse_journal_entry(
     ):
         raise DomainError("journal entry has already been reversed")
 
+    effective_reversal_date = reversal_date
+    if effective_reversal_date is None:
+        original_period = (
+            db.get(FiscalPeriod, original.fiscal_period_id)
+            if original.fiscal_period_id is not None
+            else None
+        )
+        effective_reversal_date = (
+            original.journal_date
+            if original_period is not None and original_period.status == "open"
+            else date.today()
+        )
+
     from app.domains.ledger.schemas import JournalLineInput
 
+    safe_reference = f"REV-{original.reference[:89]}-{original.id.hex[:6]}"
     command = JournalPostCommand(
-        reference=f"REV-{original.reference}",
+        reference=safe_reference,
         memo=f"Reversal of {original.reference}",
-        journal_date=original.journal_date,
+        journal_date=effective_reversal_date,
         source_type="journal_reversal",
         source_id=original.id,
         reversal_of_id=original.id,
@@ -404,7 +425,7 @@ def reverse_journal_entry(
         db,
         command,
         principal,
-        f"journal-reversal:{original.id}",
+        f"journal-reversal:{original.id}:{effective_reversal_date.isoformat()}",
     )
     complete_idempotency(
         db,
