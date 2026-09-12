@@ -23,6 +23,7 @@ def test_chart_account_create_replay_and_scoped_list(
         "name": "Short-term investments",
         "account_type": "asset",
         "is_control": False,
+        "is_cash_equivalent": True,
     }
     first = client.post(
         "/v1/accounting/accounts",
@@ -49,6 +50,7 @@ def test_chart_account_create_replay_and_scoped_list(
     assert first.status_code == 201
     assert replay.status_code == 200
     assert replay.json()["id"] == first.json()["id"]
+    assert first.json()["is_cash_equivalent"] is True
     assert listed.status_code == 200
     assert [item["code"] for item in listed.json()] == [
         "1001",
@@ -126,3 +128,24 @@ def test_control_account_cannot_receive_a_posting(
 
     assert posting.status_code == 409
     assert "control account" in posting.json()["detail"]
+
+
+def test_cash_equivalent_must_be_non_control_asset(
+    client, seeded_user, ledger_ready
+) -> None:
+    response = client.post(
+        "/v1/accounting/accounts",
+        headers={
+            **_login(client),
+            "Idempotency-Key": "invalid-cash-equivalent",
+        },
+        json={
+            "code": "4100",
+            "name": "Invalid cash revenue",
+            "account_type": "revenue",
+            "is_control": False,
+            "is_cash_equivalent": True,
+        },
+    )
+
+    assert response.status_code == 422
