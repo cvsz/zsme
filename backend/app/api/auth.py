@@ -23,7 +23,7 @@ from app.core.login_throttle import (
     record_login_success,
 )
 from app.core.security import dummy_password_hash, verify_password
-from app.db.models import Tenant, User
+from app.db.models import Organization, Tenant, User
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -49,6 +49,8 @@ class MeResponse(BaseModel):
     user_id: UUID
     tenant_id: UUID
     organization_id: UUID | None
+    organization_currency: str | None
+    organization_timezone: str | None
     email: str
     display_name: str
     roles: list[str]
@@ -146,11 +148,23 @@ def csrf(
 
 
 @router.get("/me", response_model=MeResponse)
-def me(principal: PrincipalDep) -> MeResponse:
+def me(principal: PrincipalDep, db: SessionDep) -> MeResponse:
+    organization = (
+        db.scalar(
+            select(Organization).where(
+                Organization.id == principal.organization_id,
+                Organization.tenant_id == principal.tenant_id,
+            )
+        )
+        if principal.organization_id is not None
+        else None
+    )
     return MeResponse(
         user_id=principal.user_id,
         tenant_id=principal.tenant_id,
         organization_id=principal.organization_id,
+        organization_currency=organization.default_currency if organization else None,
+        organization_timezone=organization.timezone if organization else None,
         email=principal.email,
         display_name=principal.display_name,
         roles=sorted(principal.roles),
