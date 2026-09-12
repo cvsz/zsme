@@ -63,6 +63,15 @@ export default function SettingsPage() {
     invalid: "Invalid endpoint",
   }[connectionState];
   const connectionTone = connectionState === "connected" ? "success" : connectionState === "invalid" || connectionState === "unavailable" ? "danger" : connectionState === "managed" ? "info" : "warning";
+  const environmentConnectionLabel = {
+    idle: "Endpoint unconfigured",
+    managed: "Deployment-managed endpoint",
+    saved: "Endpoint configured",
+    checking: "Endpoint check running",
+    connected: "Endpoint reachable",
+    unavailable: "Endpoint unavailable",
+    invalid: "Endpoint invalid",
+  }[connectionState];
 
   return (
     <div className="page-stack">
@@ -130,7 +139,7 @@ export default function SettingsPage() {
           <p>Operational information is intentionally separated from customer data.</p>
         </div>
         <div className="page-actions">
-          <StatusBadge tone="warning"><ServerCog size={12} aria-hidden="true" /> API not connected</StatusBadge>
+          <StatusBadge tone={connectionTone}><ServerCog size={12} aria-hidden="true" /> {environmentConnectionLabel}</StatusBadge>
           <span className="page-subtitle">Release controls require an authenticated operator and deployment policy.</span>
         </div>
       </section>

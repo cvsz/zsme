@@ -184,3 +184,37 @@ def test_posted_document_is_immutable(client, db_session, seeded_user, ledger_re
         assert "immutable" in str(error)
     else:
         raise AssertionError("posted document was mutable")
+
+
+def test_document_rejects_foreign_currency_until_fx_ledger_exists(
+    client, db_session, seeded_user, ledger_ready
+) -> None:
+    partner = _partner(db_session, seeded_user, "customer", "CUS-FX-1")
+    body = _invoice_body(partner.id, "INV-FX-1")
+    body["currency_code"] = "USD"
+
+    response = client.post(
+        "/v1/ar/invoices",
+        headers={**_login(client), "Idempotency-Key": "invoice-fx-reject"},
+        json=body,
+    )
+
+    assert response.status_code == 409
+    assert "organization currency is THB" in response.json()["detail"]
+
+
+def test_document_rejects_unconfigured_vat_rate(
+    client, db_session, seeded_user, ledger_ready
+) -> None:
+    partner = _partner(db_session, seeded_user, "customer", "CUS-TAX-RATE-1")
+    body = _invoice_body(partner.id, "INV-TAX-RATE-1")
+    body["lines"][0]["tax_rate"] = "8.00"
+
+    response = client.post(
+        "/v1/ar/invoices",
+        headers={**_login(client), "Idempotency-Key": "invoice-tax-rate-reject"},
+        json=body,
+    )
+
+    assert response.status_code == 409
+    assert "no active VAT rule" in response.json()["detail"]

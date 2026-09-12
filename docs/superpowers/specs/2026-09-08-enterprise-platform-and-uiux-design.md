@@ -1,7 +1,7 @@
 # ZSME Enterprise Platform and UI/UX Design
 
 Date: 2026-09-08
-Status: Draft - awaiting user review
+Status: Active implementation specification; production readiness remains gated by evidence
 Scope: Full ZSME enterprise platform, all application surfaces, and production-readiness controls
 
 ## 1. Intent and boundary

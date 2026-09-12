@@ -16,7 +16,7 @@ With `backend/.env.compose` configured for the intended local or approved enviro
 ```bash
 BACKUP_FILE="./backups/zsme-$(date -u +%Y%m%dT%H%M%SZ).dump"
 mkdir -p "$(dirname "$BACKUP_FILE")"
-docker compose --env-file backend/.env.compose exec -T db pg_dump --format=custom --no-owner --file=- "${POSTGRES_DB:-zsme}" > "$BACKUP_FILE"
+docker compose --env-file backend/.env.compose exec -T db sh -lc 'pg_dump --format=custom --no-owner --file=- "$POSTGRES_DB"' > "$BACKUP_FILE"
 sha256sum "$BACKUP_FILE"
 ```
 
@@ -28,7 +28,7 @@ Restoring with `--clean` removes objects in the target database. Stop writers, c
 
 ```bash
 docker compose --env-file backend/.env.compose stop api
-docker compose --env-file backend/.env.compose exec -T db pg_restore --clean --if-exists --no-owner --dbname="${POSTGRES_DB:-zsme}" < "$BACKUP_FILE"
+docker compose --env-file backend/.env.compose exec -T db sh -lc 'pg_restore --clean --if-exists --no-owner --dbname="$POSTGRES_DB"' < "$BACKUP_FILE"
 docker compose --env-file backend/.env.compose run --rm api alembic upgrade head
 docker compose --env-file backend/.env.compose up -d api
 curl --fail-with-body http://127.0.0.1:18081/ready

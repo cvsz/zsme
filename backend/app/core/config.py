@@ -94,11 +94,13 @@ class Settings(BaseSettings):
         if raw.startswith("["):
             try:
                 parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                return []
+            except json.JSONDecodeError as error:
+                raise ValueError(
+                    "CORS_ORIGINS must be valid JSON or a comma-separated list"
+                ) from error
             if isinstance(parsed, list):
                 return [str(item).strip() for item in parsed if str(item).strip()]
-            return []
+            raise ValueError("CORS_ORIGINS JSON must contain a list of origins")
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
     @model_validator(mode="after")
@@ -113,6 +115,8 @@ class Settings(BaseSettings):
                 )
             if not self.database_url or self.database_url == DEFAULT_DATABASE_URL:
                 raise ValueError("DATABASE_URL must be explicitly configured in production")
+            if not self.database_url.lower().startswith(("postgresql://", "postgresql+")):
+                raise ValueError("DATABASE_URL must use PostgreSQL in production")
             if not self.auth_cookie_secure:
                 raise ValueError("AUTH_COOKIE_SECURE must be enabled in production")
         return self

@@ -27,6 +27,7 @@ from app.db.models import (
     PaymentRecord,
 )
 from app.domains.banking.schemas import BankAccountCreate, BankImportCreate, BankTransactionStatus
+from app.domains.currency import CurrencyPolicyError, enforce_base_currency
 
 MONEY = Decimal("0.01")
 
@@ -193,6 +194,10 @@ def create_account(
     idempotency_key: str,
 ) -> BankAccountMutationResult:
     organization_id = _org(principal)
+    try:
+        currency_code = enforce_base_currency(db, principal, payload.currency_code)
+    except CurrencyPolicyError as error:
+        raise BankingDomainError(str(error)) from error
     key = _key(idempotency_key)
     request_hash = _hash(
         {"operation": "bank_account.create", "payload": payload.model_dump(mode="json")}
@@ -235,7 +240,7 @@ def create_account(
         account_code=account_code,
         name=payload.name.strip(),
         bank_name=payload.bank_name.strip(),
-        currency_code=payload.currency_code.upper(),
+        currency_code=currency_code,
         ledger_account_code=ledger_code,
         is_active=True,
     )
@@ -445,6 +450,15 @@ def reconcile_transaction(
     )
     if payment is None or payment.status != "posted":
         raise BankingDomainError("only a posted payment in this organization can be reconciled")
+    existing_match = db.scalar(
+        select(BankTransaction.id).where(
+            BankTransaction.tenant_id == principal.tenant_id,
+            BankTransaction.organization_id == organization_id,
+            BankTransaction.matched_payment_id == payment.id,
+        )
+    )
+    if existing_match is not None:
+        raise BankingDomainError("posted payment is already reconciled to a bank transaction")
 
     expected_type = "receipt" if transaction.amount > 0 else "disbursement"
     if payment.payment_type != expected_type:

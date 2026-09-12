@@ -258,12 +258,15 @@ export function ReportCenter({ activeReport }: Readonly<{ activeReport?: string 
     getServerApiBaseUrl,
   );
   const authenticated = Boolean(getAccessToken());
-  const [fromDate, setFromDate] = useState("2026-01-01");
-  const [toDate, setToDate] = useState("2026-12-31");
-  const [asOfDate, setAsOfDate] = useState("2026-12-31");
-  const [appliedFromDate, setAppliedFromDate] = useState("2026-01-01");
-  const [appliedToDate, setAppliedToDate] = useState("2026-12-31");
-  const [appliedAsOfDate, setAppliedAsOfDate] = useState("2026-12-31");
+  const currentYear = new Date().getFullYear();
+  const defaultFromDate = `${currentYear}-01-01`;
+  const defaultToDate = `${currentYear}-12-31`;
+  const [fromDate, setFromDate] = useState(defaultFromDate);
+  const [toDate, setToDate] = useState(defaultToDate);
+  const [asOfDate, setAsOfDate] = useState(defaultToDate);
+  const [appliedFromDate, setAppliedFromDate] = useState(defaultFromDate);
+  const [appliedToDate, setAppliedToDate] = useState(defaultToDate);
+  const [appliedAsOfDate, setAppliedAsOfDate] = useState(defaultToDate);
   const [search, setSearch] = useState("");
   const [report, setReport] = useState<ReportPayload | null>(null);
   const [reportKindForData, setReportKindForData] = useState<ReportKind | null>(null);

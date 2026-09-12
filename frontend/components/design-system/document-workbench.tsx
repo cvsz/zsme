@@ -499,7 +499,7 @@ export function DocumentWorkbench({ kind }: Readonly<{ kind: DocumentKind }>) {
           <button className="button button-secondary" type="submit" disabled={!canUseWorkspace || viewState === "loading"}>
             <Filter size={15} aria-hidden="true" /> Apply filters
           </button>
-          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Fiscal year 2026 · THB</span>
+          <span className="page-subtitle"><CalendarClock size={14} aria-hidden="true" /> Organization ledger scope</span>
         </form>
         <div className="data-table-wrap" tabIndex={0} aria-label={`Scroll ${page.plural} register horizontally`} aria-busy={viewState === "loading"}>
           <table className="data-table">

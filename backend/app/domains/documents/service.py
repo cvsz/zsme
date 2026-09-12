@@ -24,7 +24,9 @@ from app.db.models import (
     FinancialDocument,
     FinancialDocumentLine,
     IdempotencyRecord,
+    TaxRateRule,
 )
+from app.domains.currency import CurrencyPolicyError, enforce_base_currency
 from app.domains.documents.schemas import DocumentCreate, DocumentType
 from app.domains.ledger.schemas import JournalLineInput, JournalPostCommand
 from app.domains.ledger.service import DomainError as LedgerDomainError
@@ -177,6 +179,41 @@ def _money(value: Decimal) -> Decimal:
     return value.quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
+def _require_base_currency(
+    db: Session,
+    principal: Principal,
+    currency_code: str,
+) -> str:
+    try:
+        return enforce_base_currency(db, principal, currency_code)
+    except CurrencyPolicyError as error:
+        raise DocumentDomainError(str(error)) from error
+
+
+def _validate_vat_rates(
+    db: Session,
+    principal: Principal,
+    issue_date,
+    rates: set[Decimal],
+) -> None:
+    for rate in sorted({_money(value) for value in rates if value > 0}):
+        rule_id = db.scalar(
+            select(TaxRateRule.id).where(
+                TaxRateRule.tenant_id == principal.tenant_id,
+                TaxRateRule.organization_id == principal.organization_id,
+                TaxRateRule.tax_type == "vat",
+                TaxRateRule.rate == rate,
+                TaxRateRule.effective_from <= issue_date,
+                (TaxRateRule.effective_to.is_(None) | (TaxRateRule.effective_to >= issue_date)),
+                TaxRateRule.is_active.is_(True),
+            )
+        )
+        if rule_id is None:
+            raise DocumentDomainError(
+                f"no active VAT rule authorizes rate {rate}% on {issue_date.isoformat()}"
+            )
+
+
 def create_document(
     db: Session,
     payload: DocumentCreate,
@@ -185,6 +222,13 @@ def create_document(
     idempotency_key: str,
 ) -> DocumentMutationResult:
     organization_id = _require_organization(principal)
+    currency_code = _require_base_currency(db, principal, payload.currency_code)
+    _validate_vat_rates(
+        db,
+        principal,
+        payload.issue_date,
+        {line.tax_rate for line in payload.lines},
+    )
     key = _validate_key(idempotency_key)
     request_hash = _request_hash(
         {"document_type": document_type, "payload": payload.model_dump(mode="json")}
@@ -240,7 +284,7 @@ def create_document(
         partner_id=partner.id,
         issue_date=payload.issue_date,
         due_date=payload.due_date,
-        currency_code=payload.currency_code.upper(),
+        currency_code=currency_code,
         control_account_code=payload.control_account_code.strip().upper(),
         tax_account_code=(
             payload.tax_account_code.strip().upper() if payload.tax_account_code else None
@@ -383,6 +427,13 @@ def post_document(
         raise DocumentDomainError("only draft documents can be posted")
     if not document.lines:
         raise DocumentDomainError("a document must contain at least one line")
+    _require_base_currency(db, principal, document.currency_code)
+    _validate_vat_rates(
+        db,
+        principal,
+        document.issue_date,
+        {line.tax_rate for line in document.lines},
+    )
 
     command = _posting_command(document)
     try:

@@ -109,6 +109,10 @@ class BankTransaction(IdentifiedTimestampMixin, OrganizationScopeMixin, Base):
             "external_id",
             name="uq_bank_transactions_account_external_id",
         ),
+        UniqueConstraint(
+            "matched_payment_id",
+            name="uq_bank_transactions_matched_payment",
+        ),
     )
 
     bank_account_id: Mapped[UUID] = mapped_column(
