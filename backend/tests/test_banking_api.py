@@ -219,6 +219,30 @@ def test_bank_transaction_reconcile_matches_posted_receipt(
 
     assert replay.status_code == 200
     assert replay.json()["id"] == reconciled.json()["id"]
+
+    second_import = client.post(
+        f"/v1/banking/accounts/{account.json()['id']}/imports",
+        headers={**headers, "Idempotency-Key": "bank-import-reconcile-second"},
+        json={
+            "batch_reference": "STATEMENT-MATCH-SECOND",
+            "source_name": "match-second.csv",
+            "transactions": [
+                {
+                    "external_id": "TX-MATCH-SECOND",
+                    "transaction_date": "2026-09-08",
+                    "description": "Duplicate settlement candidate",
+                    "amount": "1070.00",
+                }
+            ],
+        },
+    )
+    duplicate_match = client.post(
+        f"/v1/banking/transactions/{second_import.json()['transactions'][0]['id']}/reconcile",
+        headers={**headers, "Idempotency-Key": "bank-reconcile-duplicate-payment"},
+        json={"payment_id": posted_receipt.json()["id"]},
+    )
+    assert duplicate_match.status_code == 409
+    assert "already reconciled" in duplicate_match.json()["detail"]
     assert db_session.query(AuditEvent).filter_by(action="bank.reconcile").count() == 1
 
 
