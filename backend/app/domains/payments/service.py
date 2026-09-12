@@ -25,6 +25,7 @@ from app.db.models import (
     PaymentAllocation,
     PaymentRecord,
 )
+from app.domains.currency import CurrencyPolicyError, enforce_base_currency
 from app.domains.ledger.schemas import JournalLineInput, JournalPostCommand
 from app.domains.ledger.service import DomainError as LedgerDomainError
 from app.domains.ledger.service import post_journal_entry
@@ -279,6 +280,10 @@ def create_payment(
     idempotency_key: str,
 ) -> PaymentMutationResult:
     organization_id = _org(principal)
+    try:
+        currency_code = enforce_base_currency(db, principal, payload.currency_code)
+    except CurrencyPolicyError as error:
+        raise PaymentDomainError(str(error)) from error
     key = _key(idempotency_key)
     request_hash = _hash({"payment_type": payment_type, "payload": payload.model_dump(mode="json")})
     claim = _claim(db, principal, key, "payment.create", request_hash)
@@ -317,7 +322,7 @@ def create_payment(
         payment_number=payment_number,
         partner_id=payload.partner_id,
         payment_date=payload.payment_date,
-        currency_code=payload.currency_code.upper(),
+        currency_code=currency_code,
         amount=payload.amount,
         cash_account_code=payload.cash_account_code.strip().upper(),
         unapplied_account_code=(
@@ -455,6 +460,10 @@ def post_payment(
     payment = _get_payment(db, payment_id, principal, payment_type, for_update=True)
     if payment.status != "draft":
         raise PaymentDomainError("only draft payments can be posted")
+    try:
+        enforce_base_currency(db, principal, payment.currency_code)
+    except CurrencyPolicyError as error:
+        raise PaymentDomainError(str(error)) from error
     _validate_persisted_allocations(db, principal, payment)
     command = _posting_command(payment)
     try:
