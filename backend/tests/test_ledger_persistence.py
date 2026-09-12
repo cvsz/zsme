@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
-from app.db.models import AuditEvent, JournalEntryRecord
+from app.db.models import AuditEvent, FiscalPeriod, JournalEntryRecord
 from app.domains.ledger.schemas import JournalLineInput, JournalPostCommand
 from app.domains.ledger.service import DomainError, post_journal_entry, reverse_journal_entry
 
@@ -113,3 +113,34 @@ def test_posted_entry_cannot_be_mutated_through_orm(
     entry.memo = "tampered"
     with pytest.raises(ValueError, match="immutable"):
         db_session.flush()
+
+
+def test_reversal_can_post_into_a_new_open_period(
+    db_session: Session, principal: Principal, balanced_command, ledger_ready
+) -> None:
+    original = post_journal_entry(db_session, balanced_command, principal, "post-locked-reverse")
+    ledger_ready.status = "locked"
+    next_period = FiscalPeriod(
+        tenant_id=principal.tenant_id,
+        organization_id=principal.organization_id,
+        name="2027",
+        start_date=date(2027, 1, 1),
+        end_date=date(2027, 12, 31),
+        status="open",
+    )
+    db_session.add(next_period)
+    db_session.flush()
+
+    reversal = reverse_journal_entry(
+        db_session,
+        original.entry_id,
+        principal,
+        "reverse-locked-period",
+        reversal_date=date(2027, 1, 2),
+    )
+    entry = db_session.get(JournalEntryRecord, reversal.entry_id)
+
+    assert entry is not None
+    assert entry.journal_date == date(2027, 1, 2)
+    assert len(entry.reference) <= 100
+    assert entry.reversal_of_id == original.entry_id
