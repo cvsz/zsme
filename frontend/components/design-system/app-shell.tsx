@@ -315,6 +315,9 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
   );
 
   const workspaceLabel = effectiveUser?.organization_id ? "Connected workspace" : "Workspace not connected";
+  const workspaceContextLabel = effectiveUser
+    ? `${effectiveUser.organization_currency || "Base currency"} · ${effectiveUser.organization_timezone || "Organization time"}`
+    : "Organization finance workspace";
   const operatorLabel = effectiveUser?.display_name || "Operator";
 
   return (
@@ -397,7 +400,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
             <Building2 size={17} aria-hidden="true" />
             <div>
               <strong>{workspaceLabel}</strong>
-              <span>Fiscal year 2026 · THB</span>
+              <span>{workspaceContextLabel}</span>
             </div>
           </div>
 
