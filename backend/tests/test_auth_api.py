@@ -152,3 +152,20 @@ def test_login_rate_limit_blocks_repeated_failures(client: TestClient, seeded_us
     assert [response.status_code for response in responses[:4]] == [401, 401, 401, 401]
     assert responses[4].status_code == 429
     assert responses[4].headers["Retry-After"]
+
+
+def test_browser_login_never_returns_raw_session_token(client: TestClient, seeded_user) -> None:
+    response = client.post(
+        "/v1/auth/browser-login",
+        json={
+            "tenant_slug": seeded_user.tenant.slug,
+            "email": seeded_user.email,
+            "password": "correct horse battery staple",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "access_token" not in response.json()
+    assert response.json()["csrf_token"]
+    assert client.cookies.get("zsme_session")
+    assert client.cookies.get("zsme_csrf")
