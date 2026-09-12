@@ -381,12 +381,27 @@ def reverse_journal_entry(
     ):
         raise DomainError("journal entry has already been reversed")
 
+    target_period = db.scalar(
+        select(FiscalPeriod)
+        .where(
+            FiscalPeriod.tenant_id == principal.tenant_id,
+            FiscalPeriod.organization_id == principal.organization_id,
+            FiscalPeriod.status == "open",
+            FiscalPeriod.end_date >= original.journal_date,
+        )
+        .order_by(FiscalPeriod.start_date)
+        .with_for_update()
+    )
+    if target_period is None:
+        raise DomainError("no open fiscal period is available for the reversal")
+    reversal_date = max(original.journal_date, target_period.start_date)
+
     from app.domains.ledger.schemas import JournalLineInput
 
     command = JournalPostCommand(
-        reference=f"REV-{original.reference}",
+        reference=f"REV/{str(original.id)[:8]}/{reversal_date:%Y%m%d}",
         memo=f"Reversal of {original.reference}",
-        journal_date=original.journal_date,
+        journal_date=reversal_date,
         source_type="journal_reversal",
         source_id=original.id,
         reversal_of_id=original.id,
