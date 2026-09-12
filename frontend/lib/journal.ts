@@ -79,8 +79,13 @@ export function postJournalEntry(input: PostJournalInput, idempotencyKey: string
   });
 }
 
-export function reverseJournalEntry(entryId: string, idempotencyKey: string): Promise<JournalPostResult> {
-  return apiRequest<JournalPostResult>(`/v1/accounting/journal-entries/${entryId}/reverse`, {
+export function reverseJournalEntry(
+  entryId: string,
+  idempotencyKey: string,
+  reversalDate?: string,
+): Promise<JournalPostResult> {
+  const query = reversalDate ? `?reversal_date=${encodeURIComponent(reversalDate)}` : "";
+  return apiRequest<JournalPostResult>(`/v1/accounting/journal-entries/${entryId}/reverse${query}`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
   });
