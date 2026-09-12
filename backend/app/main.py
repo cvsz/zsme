@@ -5,6 +5,7 @@ from app.api.auth import router as auth_router
 from app.api.errors import register_exception_handlers
 from app.api.health import router as health_router
 from app.api.organizations import router as organizations_router
+from app.api.search import router as search_router
 from app.core.config import get_settings
 from app.domain.ledger import JournalEntry, JournalLine
 from app.domains.accounting.api import router as accounting_master_router
@@ -47,6 +48,7 @@ app.include_router(auth_router)
 app.include_router(ledger_router)
 app.include_router(health_router)
 app.include_router(organizations_router)
+app.include_router(search_router)
 app.include_router(partners_router)
 app.include_router(documents_router)
 app.include_router(accounting_master_router)
