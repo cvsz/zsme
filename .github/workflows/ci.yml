@@ -46,7 +46,7 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Security static analysis
-        run: bandit -q -r app
+        run: bandit -q -r app -ll
       - name: Compile import surface
         run: python -m compileall -q app
       - name: Migration smoke
