@@ -1,4 +1,22 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${ZSME_BROWSER_API_URL:-http://127.0.0.1:18081}
+        NEXT_PUBLIC_ALLOW_CUSTOM_API_ENDPOINT: "false"
+    ports:
+      - "${ZSME_WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+
   api:
     build:
       context: ./backend
